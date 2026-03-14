@@ -1,0 +1,145 @@
+//go:build windows
+
+package agent
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
+	"golang.org/x/sys/windows"
+)
+
+const (
+	serviceName        = "VIGILAgent"
+	serviceDisplayName = "Vigil Security Agent"
+	serviceDescription = "Vigil SIEM event collection agent"
+)
+
+// ----------------------------------------------------------------------------
+// Service install / uninstall
+// ----------------------------------------------------------------------------
+
+// InstallService installs the current binary as a Windows Service.
+func InstallService() error {
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine executable path: %w", err)
+	}
+
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("could not connect to SCM: %w", err)
+	}
+	defer m.Disconnect()
+
+	// Check if already installed.
+	s, err := m.OpenService(serviceName)
+	if err == nil {
+		s.Close()
+		return fmt.Errorf("service %q already exists — run 'vigil agent uninstall' first", serviceName)
+	}
+
+	s, err = m.CreateService(
+		serviceName,
+		exePath+" agent start",
+		mgr.Config{
+			DisplayName: serviceDisplayName,
+			StartType:   mgr.StartAutomatic,
+			ServiceType: windows.SERVICE_WIN32_OWN_PROCESS,
+			Description: serviceDescription,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("could not create service: %w", err)
+	}
+	defer s.Close()
+
+	return nil
+}
+
+// UninstallService removes the Windows Service.
+func UninstallService() error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("could not connect to SCM: %w", err)
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(serviceName)
+	if err != nil {
+		return fmt.Errorf("service %q not found: %w", serviceName, err)
+	}
+	defer s.Close()
+
+	if err := s.Delete(); err != nil {
+		return fmt.Errorf("could not delete service: %w", err)
+	}
+	return nil
+}
+
+// ----------------------------------------------------------------------------
+// IsWindowsService detects whether the process was launched by the SCM.
+// ----------------------------------------------------------------------------
+
+// RunningAsService returns true when the process is running as a Windows Service.
+func RunningAsService() bool {
+	ok, err := svc.IsWindowsService()
+	return err == nil && ok
+}
+
+// ----------------------------------------------------------------------------
+// vigilService implements svc.Handler
+// ----------------------------------------------------------------------------
+
+// vigilService bridges the Windows Service control manager and the Agent.
+type vigilService struct {
+	agent *Agent
+}
+
+// Execute satisfies svc.Handler.
+func (vs *vigilService) Execute(
+	args []string,
+	r <-chan svc.ChangeRequest,
+	changes chan<- svc.Status,
+) (bool, uint32) {
+	const cmdsAccepted = svc.AcceptStop | svc.AcceptShutdown
+
+	changes <- svc.Status{State: svc.StartPending}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- vs.agent.Run(ctx)
+	}()
+
+	changes <- svc.Status{State: svc.Running, Accepts: cmdsAccepted}
+
+	for {
+		select {
+		case c := <-r:
+			switch c.Cmd {
+			case svc.Stop, svc.Shutdown:
+				changes <- svc.Status{State: svc.StopPending}
+				cancel()
+				<-done
+				changes <- svc.Status{State: svc.Stopped}
+				return false, 0
+			default:
+				// Ignore all other control codes.
+			}
+		case <-done:
+			changes <- svc.Status{State: svc.Stopped}
+			return false, 0
+		}
+	}
+}
+
+// RunAsService starts the agent under Windows Service control.
+func RunAsService(a *Agent) error {
+	return svc.Run(serviceName, &vigilService{agent: a})
+}
