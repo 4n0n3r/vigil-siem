@@ -9,9 +9,14 @@ import (
 
 // statusResponse mirrors GET /v1/status response.
 type statusResponse struct {
-	APIStatus      string `json:"api_status"`
-	DBStatus       string `json:"db_status"`
-	EventsLast24h  int    `json:"events_last_24h"`
+	APIStatus         string   `json:"api_status"`
+	DBStatus          string   `json:"db_status"`
+	EventsLast24h     int      `json:"events_last_24h"`
+	ClickhouseStatus  string   `json:"clickhouse_status"`
+	PostgresStatus    string   `json:"postgres_status"`
+	OpenAlerts        int      `json:"open_alerts"`
+	ActiveRules       int      `json:"active_rules"`
+	Warnings          []string `json:"warnings"`
 }
 
 var statusCmd = &cobra.Command{
@@ -36,9 +41,18 @@ Examples:
 		default:
 			t := output.NewTable([]string{"Component", "Status"})
 			t.Append([]string{"API", resp.APIStatus})
-			t.Append([]string{"Database", resp.DBStatus})
+			t.Append([]string{"ClickHouse", resp.ClickhouseStatus})
+			t.Append([]string{"PostgreSQL", resp.PostgresStatus})
 			t.Append([]string{"Events (last 24h)", fmt.Sprintf("%d", resp.EventsLast24h)})
+			t.Append([]string{"Open Alerts", fmt.Sprintf("%d", resp.OpenAlerts)})
+			t.Append([]string{"Active Rules", fmt.Sprintf("%d", resp.ActiveRules)})
 			t.Render()
+			if len(resp.Warnings) > 0 {
+				fmt.Println()
+				for _, w := range resp.Warnings {
+					fmt.Printf("  warning: %s\n", w)
+				}
+			}
 			fmt.Println()
 		}
 

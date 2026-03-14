@@ -21,10 +21,11 @@ type ingestRequest struct {
 
 // ingestResponse mirrors the API POST /v1/events success response.
 type ingestResponse struct {
-	ID        string `json:"id"`
-	Source    string `json:"source"`
-	Timestamp string `json:"timestamp"`
-	Status    string `json:"status"`
+	ID        string   `json:"id"`
+	Source    string   `json:"source"`
+	Timestamp string   `json:"timestamp"`
+	Status    string   `json:"status"`
+	AlertIDs  []string `json:"alert_ids"`
 }
 
 var ingestCmd = &cobra.Command{
@@ -78,6 +79,9 @@ Example:
 			t.Append([]string{"Event ID", resp.ID})
 			t.Append([]string{"Source", resp.Source})
 			t.Append([]string{"Timestamp", resp.Timestamp})
+			if len(resp.AlertIDs) > 0 {
+				t.Append([]string{"Alerts Generated", fmt.Sprintf("%d", len(resp.AlertIDs))})
+			}
 			t.Render()
 			fmt.Println()
 		}

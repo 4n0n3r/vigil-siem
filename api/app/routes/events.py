@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -17,13 +18,17 @@ from app.models import (
     StoredEvent,
 )
 from app import store
+from app.sigma import loader, evaluator
+from app.db import pg_alerts
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 @router.post("/events", response_model=IngestResponse, status_code=200)
 async def ingest_event(body: IngestRequest) -> IngestResponse:
-    """Ingest a single event into the store."""
+    """Ingest a single event into the store and run Sigma evaluation."""
     event_id = str(uuid.uuid4())
     timestamp = body.timestamp if body.timestamp is not None else datetime.now(timezone.utc)
 
@@ -33,21 +38,34 @@ async def ingest_event(body: IngestRequest) -> IngestResponse:
         event=body.event,
         timestamp=timestamp,
     )
-    store.add_event(stored)
+    await store.add_event(stored)
+
+    # Sigma rule evaluation
+    alert_ids: list[str] = []
+    for rule in loader.get_enabled_rules():
+        try:
+            if evaluator.evaluate(rule["parsed_detection"], stored.event):
+                alert_id = await pg_alerts.save_alert(rule, stored)
+                if alert_id:
+                    alert_ids.append(alert_id)
+        except Exception:  # noqa: BLE001
+            pass  # never let evaluation crash ingest
 
     return IngestResponse(
         id=event_id,
         source=body.source,
         timestamp=timestamp,
         status="ingested",
+        alert_ids=alert_ids,
     )
 
 
 @router.post("/events/batch", response_model=BatchIngestResponse, status_code=200)
 async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
-    """Ingest a batch of events into the store."""
+    """Ingest a batch of events and run Sigma evaluation on each."""
     ids: list[str] = []
     errors: list[str] = []
+    total_alerts = 0
 
     for item in body.events:
         try:
@@ -59,8 +77,19 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
                 event=item.event,
                 timestamp=timestamp,
             )
-            store.add_event(stored)
+            await store.add_event(stored)
             ids.append(event_id)
+
+            # Sigma evaluation per event
+            for rule in loader.get_enabled_rules():
+                try:
+                    if evaluator.evaluate(rule["parsed_detection"], stored.event):
+                        alert_id = await pg_alerts.save_alert(rule, stored)
+                        if alert_id:
+                            total_alerts += 1
+                except Exception:  # noqa: BLE001
+                    pass
+
         except Exception as exc:  # noqa: BLE001
             errors.append(str(exc))
 
@@ -68,6 +97,7 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
         ingested=len(ids),
         ids=ids,
         errors=errors,
+        alerts_generated=total_alerts,
     )
 
 
@@ -81,7 +111,7 @@ async def search_events(
     """Search stored events with optional time-range and substring filters."""
     t0 = time.monotonic()
 
-    results = store.search_events(
+    results = await store.search_events(
         query=query,
         from_time=from_time,
         to_time=to_time,

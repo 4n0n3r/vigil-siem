@@ -12,9 +12,33 @@ services:
     environment:
       - VIGIL_API_HOST=0.0.0.0
       - VIGIL_API_PORT=8001
+      - POSTGRES_DSN=postgresql://vigil:vigil@postgres:5432/vigil
     env_file:
       - .env.example            # override with a real .env file if present
+    depends_on:
+      postgres:
+        condition: service_healthy
     command: >
       sh -c "pip install --quiet -r requirements.txt &&
              uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload"
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil
+      POSTGRES_DB: vigil
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

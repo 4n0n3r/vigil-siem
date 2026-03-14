@@ -60,4 +60,6 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(agentCmd)
+	rootCmd.AddCommand(detectionsCmd)
+	rootCmd.AddCommand(alertsCmd)
 }

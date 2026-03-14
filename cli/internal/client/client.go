@@ -98,6 +98,48 @@ func (c *Client) Get(path string, params map[string]string, dest interface{}) er
 	return c.do(req, dest)
 }
 
+// Patch sends a JSON PATCH request to path and decodes the response into dest.
+// Returns *APIError on any failure.
+func (c *Client) Patch(path string, body interface{}, dest interface{}) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return &APIError{
+			ErrorCode: "MARSHAL_ERROR",
+			Message:   "failed to marshal request body",
+			Detail:    err.Error(),
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, c.BaseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return &APIError{
+			ErrorCode: "REQUEST_BUILD_ERROR",
+			Message:   "failed to build HTTP request",
+			Detail:    err.Error(),
+		}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	return c.do(req, dest)
+}
+
+// Delete sends a DELETE request to path.
+// Returns *APIError on any failure.
+func (c *Client) Delete(path string) error {
+	req, err := http.NewRequest(http.MethodDelete, c.BaseURL+path, nil)
+	if err != nil {
+		return &APIError{
+			ErrorCode: "REQUEST_BUILD_ERROR",
+			Message:   "failed to build HTTP request",
+			Detail:    err.Error(),
+		}
+	}
+	req.Header.Set("Accept", "application/json")
+
+	return c.do(req, nil)
+}
+
 func (c *Client) do(req *http.Request, dest interface{}) error {
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

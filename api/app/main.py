@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env before anything else reads os.environ
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -9,8 +14,33 @@ from fastapi.responses import JSONResponse
 
 from app.models import ErrorResponse
 from app.routes import events, status
+from app.routes import detections as detections_router_module
+from app.routes import alerts as alerts_router_module
+from app.db import clickhouse, postgres
+from app.sigma import loader
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: connect to databases and warm the rule cache."""
+    await clickhouse.init_clickhouse()
+    await postgres.init_postgres()
+    await loader.load_rules_from_db()
+    yield
+    # Graceful shutdown — asyncpg pool closes itself via GC, but be explicit
+    pool = postgres.get_pool()
+    if pool is not None:
+        try:
+            await pool.close()
+        except Exception:  # noqa: BLE001
+            pass
+
 
 # ---------------------------------------------------------------------------
 # App
@@ -18,8 +48,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Vigil API",
-    description="CLI-first SIEM backend — Phase 1 skeleton",
-    version="0.1.0",
+    description="CLI-first SIEM backend — Phase 2",
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
@@ -89,3 +120,5 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 app.include_router(events.router, prefix="/v1")
 app.include_router(status.router, prefix="/v1")
+app.include_router(detections_router_module.router, prefix="/v1")
+app.include_router(alerts_router_module.router, prefix="/v1")
