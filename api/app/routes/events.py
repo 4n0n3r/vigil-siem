@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -40,16 +41,26 @@ async def ingest_event(body: IngestRequest) -> IngestResponse:
     )
     await store.add_event(stored)
 
-    # Sigma rule evaluation
+    # Run CPU-bound Sigma evaluation in a thread so the event loop stays free.
+    rules = loader.get_enabled_rules()
+
+    def _eval() -> list[dict]:
+        matched = []
+        for rule in rules:
+            try:
+                if evaluator.evaluate(rule["parsed_detection"], stored.event):
+                    matched.append(rule)
+            except Exception:  # noqa: BLE001
+                pass
+        return matched
+
+    matched_rules = await asyncio.to_thread(_eval)
+
     alert_ids: list[str] = []
-    for rule in loader.get_enabled_rules():
-        try:
-            if evaluator.evaluate(rule["parsed_detection"], stored.event):
-                alert_id = await pg_alerts.save_alert(rule, stored)
-                if alert_id:
-                    alert_ids.append(alert_id)
-        except Exception:  # noqa: BLE001
-            pass  # never let evaluation crash ingest
+    for rule in matched_rules:
+        alert_id = await pg_alerts.save_alert(rule, stored)
+        if alert_id:
+            alert_ids.append(alert_id)
 
     return IngestResponse(
         id=event_id,
@@ -65,8 +76,9 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
     """Ingest a batch of events and run Sigma evaluation on each."""
     ids: list[str] = []
     errors: list[str] = []
-    total_alerts = 0
+    stored_events: list[StoredEvent] = []
 
+    # Fast pass: assign IDs and persist events (IO).
     for item in body.events:
         try:
             event_id = str(uuid.uuid4())
@@ -78,20 +90,34 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
                 timestamp=timestamp,
             )
             await store.add_event(stored)
+            stored_events.append(stored)
             ids.append(event_id)
-
-            # Sigma evaluation per event
-            for rule in loader.get_enabled_rules():
-                try:
-                    if evaluator.evaluate(rule["parsed_detection"], stored.event):
-                        alert_id = await pg_alerts.save_alert(rule, stored)
-                        if alert_id:
-                            total_alerts += 1
-                except Exception:  # noqa: BLE001
-                    pass
-
         except Exception as exc:  # noqa: BLE001
             errors.append(str(exc))
+
+    # CPU-bound Sigma evaluation runs in a thread pool so the event loop
+    # stays free to serve search and other requests concurrently.
+    rules = loader.get_enabled_rules()
+
+    def _eval_batch() -> list[tuple[dict, StoredEvent]]:
+        matches: list[tuple[dict, StoredEvent]] = []
+        for stored in stored_events:
+            for rule in rules:
+                try:
+                    if evaluator.evaluate(rule["parsed_detection"], stored.event):
+                        matches.append((rule, stored))
+                except Exception:  # noqa: BLE001
+                    pass
+        return matches
+
+    matches = await asyncio.to_thread(_eval_batch)
+
+    # Save alerts back on the event loop (async IO).
+    total_alerts = 0
+    for rule, stored in matches:
+        alert_id = await pg_alerts.save_alert(rule, stored)
+        if alert_id:
+            total_alerts += 1
 
     return BatchIngestResponse(
         ingested=len(ids),
