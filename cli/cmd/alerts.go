@@ -60,6 +60,14 @@ var (
 
 	alertsVisualizeOut   string
 	alertsVisualizeServe bool
+
+	alertsBatchAction   string
+	alertsBatchIDs      string
+	alertsBatchStatus   string
+	alertsBatchSeverity string
+	alertsBatchNote     string
+	alertsBatchAll      bool
+	alertsBatchConfirm  bool
 )
 
 // ----------------------------------------------------------------------------
@@ -489,6 +497,85 @@ and a recent alerts table. All data is baked into the HTML — no server require
 	},
 }
 
+// ----------------------------------------------------------------------------
+// vigil alerts batch
+// ----------------------------------------------------------------------------
+
+type alertBatchResponse struct {
+	Updated int      `json:"updated"`
+	IDs     []string `json:"ids"`
+	Action  string   `json:"action"`
+	Errors  []string `json:"errors"`
+}
+
+var alertsBatchCmd = &cobra.Command{
+	Use:   "batch",
+	Short: "Batch-update alerts (acknowledge, suppress, or resolve)",
+	Long: `Apply an action to multiple alerts at once.
+
+Examples:
+  vigil alerts batch --action acknowledge --ids id1,id2 --note "Reviewed"
+  vigil alerts batch --action resolve --status open --severity low --confirm
+  vigil alerts batch --action suppress --all --confirm`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if alertsBatchAction == "" {
+			output.PrintError("MISSING_FLAG", "--action is required (acknowledge|suppress|resolve)", "")
+			return nil
+		}
+
+		// Parse explicit IDs if provided.
+		var ids []string
+		if alertsBatchIDs != "" {
+			for _, id := range strings.Split(alertsBatchIDs, ",") {
+				if s := strings.TrimSpace(id); s != "" {
+					ids = append(ids, s)
+				}
+			}
+		}
+
+		// Determine whether confirmation is needed.
+		filterBased := len(ids) == 0 && (alertsBatchStatus != "" || alertsBatchSeverity != "" || alertsBatchAll)
+		needsConfirm := filterBased || alertsBatchAll || len(ids) > 10
+		if needsConfirm && !alertsBatchConfirm {
+			output.PrintError("CONFIRM_REQUIRED",
+				"this operation may affect many alerts — pass --confirm to proceed",
+				"use --confirm to authorize the batch action")
+			return nil
+		}
+
+		body := map[string]interface{}{
+			"action": alertsBatchAction,
+		}
+		if len(ids) > 0 {
+			body["ids"] = ids
+		}
+		if alertsBatchStatus != "" {
+			body["status_filter"] = alertsBatchStatus
+		}
+		if alertsBatchSeverity != "" {
+			body["severity_filter"] = alertsBatchSeverity
+		}
+		if alertsBatchNote != "" {
+			body["note"] = alertsBatchNote
+		}
+
+		var resp alertBatchResponse
+		if err := apiClient.Post("/v1/alerts/batch", body, &resp); err != nil {
+			output.PrintErrorFromErr(err)
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			output.PrintJSON(resp)
+			return nil
+		}
+
+		fmt.Printf("Updated %d alert(s) (%s)\n", resp.Updated, resp.Action)
+		return nil
+	},
+}
+
 // openBrowser opens a file URL in the system's default browser.
 func openBrowser(path string) {
 	var c *exec.Cmd
@@ -525,9 +612,26 @@ func init() {
 	alertsVisualizeCmd.Flags().BoolVar(&alertsVisualizeServe, "serve", false,
 		"Open the dashboard in the default browser after writing")
 
+	// alerts batch
+	alertsBatchCmd.Flags().StringVar(&alertsBatchAction, "action", "",
+		"Action to apply: acknowledge|suppress|resolve (required)")
+	alertsBatchCmd.Flags().StringVar(&alertsBatchIDs, "ids", "",
+		"Comma-separated alert IDs to update")
+	alertsBatchCmd.Flags().StringVar(&alertsBatchStatus, "status", "",
+		"Filter by status (used when --ids is not set)")
+	alertsBatchCmd.Flags().StringVar(&alertsBatchSeverity, "severity", "",
+		"Filter by severity (used when --ids is not set)")
+	alertsBatchCmd.Flags().StringVar(&alertsBatchNote, "note", "",
+		"Optional note to attach to each updated alert")
+	alertsBatchCmd.Flags().BoolVar(&alertsBatchAll, "all", false,
+		"Target all alerts (requires --confirm)")
+	alertsBatchCmd.Flags().BoolVar(&alertsBatchConfirm, "confirm", false,
+		"Confirm the operation when targeting multiple alerts")
+
 	// Register subcommands.
 	alertsCmd.AddCommand(alertsListCmd)
 	alertsCmd.AddCommand(alertsGetCmd)
 	alertsCmd.AddCommand(alertsAcknowledgeCmd)
 	alertsCmd.AddCommand(alertsVisualizeCmd)
+	alertsCmd.AddCommand(alertsBatchCmd)
 }

@@ -25,7 +25,7 @@ func (wc *WindowsCollector) Start(_ context.Context) (<-chan Event, error) {
 func (wc *WindowsCollector) SaveBookmark(_ string) error { return nil }
 
 // LoadBookmarkXML always returns empty on non-Windows.
-func LoadBookmarkXML(_ string) string { return "" }
+func LoadBookmarkXML(_, _ string) string { return "" }
 
 // NewWindowsCollectors returns stub collectors on non-Windows.
 func NewWindowsCollectors(channels []string, _ string) []Collector {

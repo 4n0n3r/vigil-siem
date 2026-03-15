@@ -35,7 +35,8 @@ type Collector interface {
 	// The collector must stop and close the channel when ctx is cancelled.
 	Start(ctx context.Context) (<-chan Event, error)
 	// SaveBookmark persists a bookmark so the next start can resume from here.
-	SaveBookmark(path string) error
+	// dir is a directory path; each collector writes its own file inside it.
+	SaveBookmark(dir string) error
 }
 
 // ----------------------------------------------------------------------------
@@ -85,7 +86,7 @@ type Config struct {
 	Channels      []string
 	BatchSize     int
 	FlushInterval time.Duration
-	BookmarkFile  string
+	BookmarkDir   string
 	StatusFile    string
 }
 
@@ -104,7 +105,7 @@ func DefaultConfig() Config {
 		},
 		BatchSize:     100,
 		FlushInterval: 5 * time.Second,
-		BookmarkFile:  filepath.Join(vigilDir, "agent_bookmark.xml"),
+		BookmarkDir:   filepath.Join(vigilDir, "bookmarks"),
 		StatusFile:    filepath.Join(vigilDir, "agent_status.json"),
 	}
 }
@@ -243,7 +244,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.writeStatusFile()
 			// Save bookmarks.
 			for _, col := range a.collectors {
-				if err := col.SaveBookmark(a.cfg.BookmarkFile); err != nil {
+				if err := col.SaveBookmark(a.cfg.BookmarkDir); err != nil {
 					a.logError("BOOKMARK_SAVE_ERROR",
 						fmt.Sprintf("collector %q bookmark save failed: %v", col.Name(), err))
 				}
@@ -281,7 +282,7 @@ func (a *Agent) flush() {
 	// Save bookmarks after every successful flush so a crash loses at most
 	// one flush interval worth of position (default 5s).
 	for _, col := range a.collectors {
-		if err := col.SaveBookmark(a.cfg.BookmarkFile); err != nil {
+		if err := col.SaveBookmark(a.cfg.BookmarkDir); err != nil {
 			a.logError("BOOKMARK_SAVE_ERROR",
 				fmt.Sprintf("collector %q bookmark save failed: %v", col.Name(), err))
 		}

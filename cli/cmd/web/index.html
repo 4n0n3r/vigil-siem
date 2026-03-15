@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil SIEM</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="nav">
+  <span class="nav-logo">▶ VIGIL</span>
+  <a href="#/" class="nav-link" data-route="/">Dashboard</a>
+  <a href="#/alerts" class="nav-link" data-route="/alerts">Alerts</a>
+  <a href="#/detections" class="nav-link" data-route="/detections">Detections</a>
+  <span class="nav-status" id="nav-status"></span>
+</nav>
+<div id="app" class="app-content"></div>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/vendor/chart.min.js"></script>
+<script src="/static/vendor/d3.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

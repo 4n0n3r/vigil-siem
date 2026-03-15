@@ -42,8 +42,7 @@ func addPlatformCollectors(a *agent.Agent, cfg agent.Config, profile string) {
 	if len(channels) == 0 {
 		channels = windowsProfileChannels(profile)
 	}
-	bookmarkXML := agent.LoadBookmarkXML(cfg.BookmarkFile)
-	for _, col := range agent.NewWindowsCollectors(channels, bookmarkXML) {
+	for _, col := range agent.NewWindowsCollectors(channels, cfg.BookmarkDir) {
 		a.AddCollector(col)
 	}
 }

@@ -39,9 +39,19 @@ async def ingest_event(body: IngestRequest) -> IngestResponse:
         event=body.event,
         timestamp=timestamp,
     )
-    await store.add_event(stored)
+    added = await store.add_event(stored)
 
     # Run CPU-bound Sigma evaluation in a thread so the event loop stays free.
+    # Skip entirely for duplicate events that were not stored.
+    if not added:
+        return IngestResponse(
+            id=event_id,
+            source=body.source,
+            timestamp=timestamp,
+            status="duplicate",
+            alert_ids=[],
+        )
+
     rules = loader.get_enabled_rules()
 
     def _eval() -> list[dict]:
@@ -79,6 +89,7 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
     stored_events: list[StoredEvent] = []
 
     # Fast pass: assign IDs and persist events (IO).
+    # Duplicates (add_event returns False) are skipped from Sigma evaluation.
     for item in body.events:
         try:
             event_id = str(uuid.uuid4())
@@ -89,9 +100,9 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
                 event=item.event,
                 timestamp=timestamp,
             )
-            await store.add_event(stored)
-            stored_events.append(stored)
-            ids.append(event_id)
+            if await store.add_event(stored):
+                stored_events.append(stored)
+                ids.append(event_id)
         except Exception as exc:  # noqa: BLE001
             errors.append(str(exc))
 

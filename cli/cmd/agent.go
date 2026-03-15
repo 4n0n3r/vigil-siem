@@ -21,7 +21,7 @@ var (
 	agentChannels      []string
 	agentBatchSize     int
 	agentFlushInterval time.Duration
-	agentBookmarkFile  string
+	agentBookmarkDir   string
 	agentProfile       string
 )
 
@@ -72,8 +72,8 @@ the Windows channel list explicitly.`,
 		if agentFlushInterval > 0 {
 			cfg.FlushInterval = agentFlushInterval
 		}
-		if agentBookmarkFile != "" {
-			cfg.BookmarkFile = agentBookmarkFile
+		if agentBookmarkDir != "" {
+			cfg.BookmarkDir = agentBookmarkDir
 		}
 
 		a := agent.New(apiClient, cfg)
@@ -290,8 +290,8 @@ func init() {
 		"Maximum time between flushes (e.g. 5s, 30s, 1m)",
 	)
 	agentStartCmd.Flags().StringVar(
-		&agentBookmarkFile, "bookmark-file", "",
-		"Path to bookmark file (default: %%APPDATA%%\\Vigil\\agent_bookmark.xml)",
+		&agentBookmarkDir, "bookmark-dir", "",
+		"Directory for per-channel bookmark files (default: %%APPDATA%%\\Vigil\\bookmarks\\)",
 	)
 
 	// Register subcommands under agentCmd.

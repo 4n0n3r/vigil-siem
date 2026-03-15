@@ -63,4 +63,5 @@ func init() {
 	rootCmd.AddCommand(detectionsCmd)
 	rootCmd.AddCommand(alertsCmd)
 	rootCmd.AddCommand(forensicCmd)
+	rootCmd.AddCommand(webCmd)
 }

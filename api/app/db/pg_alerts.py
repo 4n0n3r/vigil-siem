@@ -1,5 +1,5 @@
 """
-Helper for persisting Sigma-triggered alerts to PostgreSQL.
+Helper for persisting and bulk-managing Sigma-triggered alerts in PostgreSQL.
 
 Used by the ingest route after evaluating each enabled detection rule.
 Duplicate alerts (same rule fired on the same source event) are silently
@@ -81,3 +81,89 @@ async def save_alert(rule: dict, stored_event) -> str:
             str(exc).replace('"', "'"),
         )
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Batch operations
+# ---------------------------------------------------------------------------
+
+_ACTION_STATUS = {
+    "acknowledge": "acknowledged",
+    "suppress": "suppressed",
+    "resolve": "resolved",
+}
+
+
+async def batch_update_alerts(
+    ids: list[str], action: str, note: str | None
+) -> tuple[int, list[str]]:
+    """Apply action to all alerts in ids. Returns (count, updated_ids)."""
+    from app.db import postgres  # noqa: PLC0415
+
+    pool = postgres.get_pool()
+    if pool is None or not ids:
+        return 0, []
+
+    new_status = _ACTION_STATUS.get(action, action)
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                UPDATE alerts
+                SET status = $1,
+                    acknowledged_at = CASE WHEN $1 = 'acknowledged'
+                                          THEN NOW() ELSE acknowledged_at END,
+                    note = COALESCE($2, note)
+                WHERE id = ANY($3::uuid[])
+                RETURNING id
+                """,
+                new_status,
+                note,
+                ids,
+            )
+        updated_ids = [str(r["id"]) for r in rows]
+        return len(updated_ids), updated_ids
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            '{"event": "batch_update_error", "error": "%s"}',
+            str(exc).replace('"', "'"),
+        )
+        return 0, []
+
+
+async def get_alert_ids_by_filter(
+    status_filter: str | None,
+    severity_filter: str | None,
+) -> list[str]:
+    """Return alert IDs matching the given filters."""
+    from app.db import postgres  # noqa: PLC0415
+
+    pool = postgres.get_pool()
+    if pool is None:
+        return []
+
+    conditions = []
+    params: list = []
+    idx = 1
+
+    if status_filter is not None:
+        conditions.append(f"status = ${idx}")
+        params.append(status_filter)
+        idx += 1
+    if severity_filter is not None:
+        conditions.append(f"severity = ${idx}")
+        params.append(severity_filter)
+        idx += 1
+
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(f"SELECT id FROM alerts {where_clause}", *params)
+        return [str(r["id"]) for r in rows]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            '{"event": "filter_ids_error", "error": "%s"}',
+            str(exc).replace('"', "'"),
+        )
+        return []

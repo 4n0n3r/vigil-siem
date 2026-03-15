@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -27,24 +28,59 @@ logger = logging.getLogger(__name__)
 
 _fallback_events: list[StoredEvent] = []
 
+# ---------------------------------------------------------------------------
+# Event-level LRU dedup — prevents re-ingesting the same source log record
+# after an agent restart when EvtSeek falls back to start-of-log.
+# ---------------------------------------------------------------------------
+
+_SEEN_MAX = 10_000
+_seen: OrderedDict[str, bool] = OrderedDict()
+
+
+def _compute_source_event_id(event: StoredEvent) -> str:
+    """Derive a stable dedup key from the event's originating record ID.
+
+    Returns "" for events without a stable record_id so they are never
+    entered into the LRU (they get a new UUID on every ingest anyway).
+    """
+    ev = event.event or {}
+    record_id = ev.get("record_id")
+    if record_id is None:
+        record_id = (ev.get("event_data") or {}).get("record_id")
+    if record_id is not None:
+        return f"{event.source}:{record_id}"
+    return ""
+
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-async def add_event(event: StoredEvent) -> None:
-    """Persist a single event — ClickHouse if available, else fallback list."""
+async def add_event(event: StoredEvent) -> bool:
+    """Persist a single event — ClickHouse if available, else fallback list.
+
+    Returns True if the event was stored, False if it was a known duplicate.
+    """
+    key = _compute_source_event_id(event)
+    if key:
+        if key in _seen:
+            return False
+        _seen[key] = True
+        if len(_seen) > _SEEN_MAX:
+            _seen.popitem(last=False)  # evict oldest entry
+
     client = _get_ch_client()
     if client is not None:
         try:
             await asyncio.to_thread(_ch_insert, client, event)
-            return
+            return True
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 '{"event": "ch_insert_failed", "error": "%s", "fallback": true}',
                 str(exc).replace('"', "'"),
             )
     _fallback_events.append(event)
+    return True
 
 
 async def search_events(

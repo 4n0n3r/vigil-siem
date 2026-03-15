@@ -15,11 +15,13 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from app.db import postgres
+from app.db import postgres, pg_alerts
 from app.models import (
     Alert,
     AlertAcknowledgeRequest,
     AlertAcknowledgeResponse,
+    AlertBatchRequest,
+    AlertBatchResponse,
     AlertListResponse,
     ErrorResponse,
 )
@@ -72,6 +74,40 @@ def _row_to_alert(row) -> Alert:
         acknowledged_at=row.get("acknowledged_at"),
         note=row.get("note"),
         event_snapshot=snapshot,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /alerts/batch
+# ---------------------------------------------------------------------------
+
+@router.post("/alerts/batch", response_model=AlertBatchResponse)
+async def batch_alerts(body: AlertBatchRequest):
+    """Apply an action (acknowledge/suppress/resolve) to multiple alerts."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return _db_unavailable()
+
+    ids = list(body.ids)
+    if not ids:
+        if body.status_filter is not None or body.severity_filter is not None:
+            ids = await pg_alerts.get_alert_ids_by_filter(
+                body.status_filter, body.severity_filter
+            )
+        else:
+            err = ErrorResponse(
+                error_code="BATCH_NO_TARGET",
+                message="Provide ids or at least one filter (status_filter or severity_filter).",
+                detail=None,
+            )
+            return JSONResponse(status_code=422, content=err.model_dump())
+
+    updated, updated_ids = await pg_alerts.batch_update_alerts(ids, body.action, body.note)
+    return AlertBatchResponse(
+        updated=updated,
+        ids=updated_ids,
+        action=body.action,
+        errors=[],
     )
 
 

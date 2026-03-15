@@ -39,9 +39,11 @@ If `warnings` is non-empty or any status is not `"ok"`, report degraded state be
 | `vigil alerts list` | `--status open\|ack` `--severity` `--limit` | `alerts[]`, `total` |
 | `vigil alerts get <id>` | — | full alert + `event_snapshot` |
 | `vigil alerts acknowledge <id>` | `--note <s>` | `id`, `status`, `acknowledged_at` |
+| `vigil alerts batch` | `--action ack\|suppress\|resolve` `--ids` `--status` `--severity` `--confirm` | `updated`, `ids[]`, `action` |
 | `vigil alerts visualize` | `--out <file>` `--serve` | `file`, `total_alerts` |
 | `vigil forensic collect` | — | `ingested`, `counts{}` |
-| `vigil agent start` | `--profile minimal\|standard\|full` | streaming (no JSON output) |
+| `vigil agent start` | `--profile minimal\|standard\|full` `--bookmark-dir` | streaming (no JSON output) |
+| `vigil web start` | `--port <n>` | `status`, `url`, `api_proxy` |
 
 **Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:`
 
@@ -61,6 +63,7 @@ If `warnings` is non-empty or any status is not `"ok"`, report degraded state be
 | `DB_NOT_CONNECTED` | PostgreSQL unavailable — detections/alerts need it |
 | `NOT_FOUND` | Rule, alert, or approval does not exist |
 | `CONFIRM_REQUIRED` | Destructive command needs `--confirm` (human must authorize) |
+| `BATCH_NO_TARGET` | `alerts batch` called with neither `--ids` nor any filter |
 | `UNSUPPORTED_PLATFORM` | Feature not available on current OS |
 | `FORENSIC_PLATFORM_ERROR` | Forensic collection requires Windows |
 | `COMMAND_ERROR` | Unknown command or flag |
@@ -151,6 +154,72 @@ Cross-reference with `forensic:prefetch` timestamps to establish timeline.
 vigil alerts visualize --serve --output json
 ```
 Reports `file` path and `total_alerts`. The browser opens automatically with `--serve`.
+
+---
+
+### `deploy_agent`
+**Trigger:** "set up the agent on this host" / "start collecting events"
+```bash
+# 1. Confirm API is reachable.
+vigil status --output json
+
+# 2. Start in foreground to verify event flow (Ctrl+C after a few seconds).
+#    Choose profile: minimal (Security only) | standard (+ Sysmon, PowerShell) | full (all channels)
+vigil agent start --profile standard --output json
+
+# 3. Confirm events are arriving.
+vigil search --query "winlog:" --limit 5 --output json
+
+# 4. Install as a persistent Windows Service.
+vigil agent install --output json
+
+# 5. Verify service health.
+vigil agent status --output json
+```
+Profile selection guidance: use `minimal` for low-noise environments; `standard` for most deployments;
+`full` only when WMI/TaskScheduler/Defender telemetry is needed.
+
+---
+
+### Log collection scenarios
+
+| Scenario | Profile | Rationale |
+|---|---|---|
+| Endpoint baseline, low storage | `minimal` | Security log only; covers logon/logoff |
+| Standard endpoint monitoring | `standard` | Adds Sysmon, PowerShell; recommended default |
+| Active incident response | `full` | All channels; high volume, short retention |
+| Linux server monitoring | `minimal` | journald only, low overhead |
+| Linux with SSH brute force risk | `standard` | journald + auth.log |
+| Linux full audit | `full` | + /var/log/syslog |
+
+Override channels on Windows: `vigil agent start --channels Security,Microsoft-Windows-Sysmon/Operational`
+
+---
+
+### `end_to_end_analysis`
+**Trigger:** "investigate what happened" / "full workflow on this alert"
+```bash
+# 1. List critical and high alerts.
+vigil alerts list --status open --severity critical --output json
+vigil alerts list --status open --severity high --output json
+
+# 2. Get full detail on the top alert.
+vigil alerts get <alert_id> --output json
+# Extract event_snapshot.computer and key event fields.
+
+# 3. Search for supporting context around the same host.
+vigil search --query "<hostname>" --limit 50 --output json
+
+# 4. Acknowledge confirmed true positives with a note.
+vigil alerts acknowledge <alert_id> --note "Confirmed TP: <findings>" --output json
+
+# 5. Bulk-close low-severity noise after review.
+vigil alerts batch --action resolve --status open --severity low --confirm --output json
+
+# 6. Open the live web UI for a visual overview.
+vigil web start --port 3000 --output json
+# Navigate to http://localhost:3000 → Alerts → click alert → view entity graph
+```
 
 ---
 

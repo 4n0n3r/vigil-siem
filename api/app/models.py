@@ -161,3 +161,22 @@ class AlertAcknowledgeResponse(BaseModel):
     status: str
     acknowledged_at: datetime
     note: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Batch alert operations
+# ---------------------------------------------------------------------------
+
+class AlertBatchRequest(BaseModel):
+    ids: list[str] = []
+    status_filter: str | None = None
+    severity_filter: str | None = None
+    action: Literal["acknowledge", "suppress", "resolve"]
+    note: str | None = None
+
+
+class AlertBatchResponse(BaseModel):
+    updated: int
+    ids: list[str]
+    action: str
+    errors: list[str] = []

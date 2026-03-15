@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,35 +22,30 @@ import (
 var (
 	wevtapi = syscall.NewLazyDLL("wevtapi.dll")
 
-	procEvtSubscribe      = wevtapi.NewProc("EvtSubscribe")
+	procEvtQuery          = wevtapi.NewProc("EvtQuery")
 	procEvtNext           = wevtapi.NewProc("EvtNext")
 	procEvtRender         = wevtapi.NewProc("EvtRender")
 	procEvtClose          = wevtapi.NewProc("EvtClose")
+	procEvtSeek           = wevtapi.NewProc("EvtSeek")
 	procEvtCreateBookmark = wevtapi.NewProc("EvtCreateBookmark")
 	procEvtUpdateBookmark = wevtapi.NewProc("EvtUpdateBookmark")
-	procEvtOpenSession    = wevtapi.NewProc("EvtOpenSession") // unused but declared for completeness
-)
-
-var (
-	kernel32       = syscall.NewLazyDLL("kernel32.dll")
-	procCreateEvent = kernel32.NewProc("CreateEventW")
-	procWaitForSingleObject = kernel32.NewProc("WaitForSingleObject")
 )
 
 const (
-	evtSubscribeToFutureEvents      = 0x1
-	evtSubscribeStartAfterBookmark  = 0x3
-	evtRenderEventXml               = 1
-	evtRenderBookmark               = 2
+	evtQueryChannelPath      uintptr = 0x1
+	evtQueryForwardDirection uintptr = 0x100
 
-	// EvtSubscribeNotifyAsync callback flag — we use event-based signalling instead.
-	evtSubscribeActionDeliver = 0
+	evtSeekRelativeToBookmark uintptr = 0x3
+	evtSeekStrict             uintptr = 0x10000
 
-	waitObject0    = 0x00000000
-	waitTimeout    = 0x00000102
-	waitFailed     = 0xFFFFFFFF
-	infinite       = 0xFFFFFFFF
-	maxBatchEvents = 256
+	evtRenderEventXml = uintptr(1)
+	evtRenderBookmark = uintptr(2)
+
+	// pollInterval is how often the collector checks for new events after draining.
+	pollInterval = 2 * time.Second
+
+	// backfillQuery reads events from the last 24 hours on first start.
+	backfillQuery = "*[System[TimeCreated[timediff(@SystemTime) <= 86400000]]]"
 )
 
 // ----------------------------------------------------------------------------
@@ -57,8 +53,8 @@ const (
 // ----------------------------------------------------------------------------
 
 type evtXML struct {
-	XMLName xml.Name  `xml:"Event"`
-	System  sysBlock  `xml:"System"`
+	XMLName   xml.Name  `xml:"Event"`
+	System    sysBlock  `xml:"System"`
 	EventData dataBlock `xml:"EventData"`
 	UserData  struct {
 		InnerXML string `xml:",innerxml"`
@@ -87,22 +83,20 @@ type dataItem struct {
 }
 
 // ----------------------------------------------------------------------------
-// WindowsCollector
+// WindowsCollector — EvtQuery polling model
 // ----------------------------------------------------------------------------
 
-// WindowsCollector subscribes to a single Windows Event Log channel.
+// WindowsCollector reads a single Windows Event Log channel using a
+// poll loop (EvtQuery + EvtNext). This avoids the fragile signal-event
+// mechanism of EvtSubscribe and is straightforward to reason about.
 type WindowsCollector struct {
-	channel      string
-	bookmarkXML  string // XML loaded from file at startup; empty = no bookmark
-	subHandle    syscall.Handle
-	signalHandle syscall.Handle
+	channel     string
+	bookmarkXML string // persisted XML, empty = fresh start
 
-	mu           sync.Mutex
-	bookmarkHandle syscall.Handle // live bookmark handle, updated per event
+	mu             sync.Mutex
+	bookmarkHandle syscall.Handle
 }
 
-// NewWindowsCollector creates a collector for the given channel.
-// bookmarkXML is the persisted bookmark XML (may be empty for fresh start).
 func NewWindowsCollector(channel, bookmarkXML string) *WindowsCollector {
 	return &WindowsCollector{
 		channel:     channel,
@@ -112,106 +106,148 @@ func NewWindowsCollector(channel, bookmarkXML string) *WindowsCollector {
 
 func (wc *WindowsCollector) Name() string { return wc.channel }
 
-// Start opens the event subscription and begins pumping events onto the returned channel.
+// Start begins polling the channel and emitting events on the returned channel.
+// It closes the channel when ctx is cancelled.
 func (wc *WindowsCollector) Start(ctx context.Context) (<-chan Event, error) {
-	// Create an auto-reset Windows Event for signalling.
-	signal, _, err := procCreateEvent.Call(0, 0, 0, 0)
-	if signal == 0 {
-		return nil, fmt.Errorf("CreateEvent failed: %w", err)
+	// Verify the channel is accessible with a quick probe query.
+	if err := wc.probe(); err != nil {
+		return nil, err
 	}
-	wc.signalHandle = syscall.Handle(signal)
 
-	channelPtr, err := syscall.UTF16PtrFromString(wc.channel)
+	// Initialise (or restore) the bookmark handle.
+	bh, err := wc.initBookmark()
 	if err != nil {
-		return nil, fmt.Errorf("UTF16PtrFromString(%s): %w", wc.channel, err)
+		return nil, fmt.Errorf("bookmark init failed: %w", err)
 	}
-
-	var flags uintptr
-	var bookmarkHandle syscall.Handle
-
-	if wc.bookmarkXML != "" {
-		// Re-create bookmark handle from the persisted XML.
-		xmlPtr, xmlErr := syscall.UTF16PtrFromString(wc.bookmarkXML)
-		if xmlErr == nil {
-			bh, _, _ := procEvtCreateBookmark.Call(uintptr(unsafe.Pointer(xmlPtr)))
-			if bh != 0 {
-				bookmarkHandle = syscall.Handle(bh)
-				flags = evtSubscribeStartAfterBookmark
-			}
-		}
-	}
-	if flags == 0 {
-		flags = evtSubscribeToFutureEvents
-	}
-
-	// EvtSubscribe(Session=NULL, SignalEvent, Channel, Query=NULL,
-	//              Bookmark, Context=NULL, Callback=NULL, Flags)
-	sub, _, callErr := procEvtSubscribe.Call(
-		0,                                 // session (local)
-		uintptr(wc.signalHandle),          // signal event handle
-		uintptr(unsafe.Pointer(channelPtr)),
-		0,                                 // query (all events)
-		uintptr(bookmarkHandle),
-		0,                                 // context
-		0,                                 // callback
-		flags,
-	)
-
-	if bookmarkHandle != 0 {
-		procEvtClose.Call(uintptr(bookmarkHandle))
-	}
-
-	if sub == 0 {
-		syscall.CloseHandle(wc.signalHandle)
-		// Treat "channel not found" as non-fatal — caller skips silently.
-		return nil, fmt.Errorf("EvtSubscribe(%s) failed: %v", wc.channel, callErr)
-	}
-	wc.subHandle = syscall.Handle(sub)
-
-	// Create a live bookmark handle to track position.
-	bh, _, _ := procEvtCreateBookmark.Call(0)
 	wc.mu.Lock()
-	wc.bookmarkHandle = syscall.Handle(bh)
+	wc.bookmarkHandle = bh
 	wc.mu.Unlock()
 
-	out := make(chan Event, 256)
-	go wc.pump(ctx, out)
+	out := make(chan Event, 512)
+	go wc.poll(ctx, out)
 	return out, nil
 }
 
-// pump is the goroutine that waits for the signal event and drains batches.
-func (wc *WindowsCollector) pump(ctx context.Context, out chan<- Event) {
-	defer close(out)
-	defer wc.cleanup()
+// probe runs a zero-result query to verify channel access.
+func (wc *WindowsCollector) probe() error {
+	chPtr, err := syscall.UTF16PtrFromString(wc.channel)
+	if err != nil {
+		return err
+	}
+	qPtr, _ := syscall.UTF16PtrFromString("*")
+	h, _, callErr := procEvtQuery.Call(
+		0,
+		uintptr(unsafe.Pointer(chPtr)),
+		uintptr(unsafe.Pointer(qPtr)),
+		evtQueryChannelPath|evtQueryForwardDirection,
+	)
+	if h == 0 {
+		return fmt.Errorf("EvtQuery(%s) failed: %v", wc.channel, callErr)
+	}
+	procEvtClose.Call(h)
+	return nil
+}
 
-	handles := [1]uintptr{uintptr(wc.signalHandle)}
-	_ = handles
+// initBookmark creates or restores the bookmark handle.
+// Returns a valid bookmark handle or 0 if no bookmark exists yet.
+func (wc *WindowsCollector) initBookmark() (syscall.Handle, error) {
+	if wc.bookmarkXML == "" {
+		// Fresh start — create an empty bookmark.
+		bh, _, _ := procEvtCreateBookmark.Call(0)
+		return syscall.Handle(bh), nil
+	}
+	xmlPtr, err := syscall.UTF16PtrFromString(wc.bookmarkXML)
+	if err != nil {
+		return 0, err
+	}
+	bh, _, callErr := procEvtCreateBookmark.Call(uintptr(unsafe.Pointer(xmlPtr)))
+	if bh == 0 {
+		return 0, fmt.Errorf("EvtCreateBookmark from XML failed: %v", callErr)
+	}
+	return syscall.Handle(bh), nil
+}
+
+// poll is the main goroutine. It repeatedly queries the channel, drains
+// all available events, then sleeps before querying again.
+func (wc *WindowsCollector) poll(ctx context.Context, out chan<- Event) {
+	defer close(out)
+	defer wc.closeBookmark()
+
+	firstRun := wc.bookmarkXML == ""
 
 	for {
-		// Check context first.
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
 
-		// Wait up to 1 second for the signal event (keeps ctx cancellation responsive).
-		ret, _, _ := procWaitForSingleObject.Call(uintptr(wc.signalHandle), 1000)
-		switch ret {
-		case waitFailed:
-			return
-		case waitTimeout:
-			continue
-		}
+		wc.runQuery(ctx, out, firstRun)
+		firstRun = false
 
-		// Signal fired — drain all available event handles.
-		wc.drainBatch(ctx, out)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pollInterval):
+		}
 	}
 }
 
-// drainBatch calls EvtNext in a loop until no more events are available.
-func (wc *WindowsCollector) drainBatch(ctx context.Context, out chan<- Event) {
-	handles := make([]syscall.Handle, maxBatchEvents)
+// runQuery opens a fresh EvtQuery result set, seeks past the bookmark if one
+// exists, drains all events, and updates the bookmark.
+func (wc *WindowsCollector) runQuery(ctx context.Context, out chan<- Event, useBackfill bool) {
+	chPtr, err := syscall.UTF16PtrFromString(wc.channel)
+	if err != nil {
+		return
+	}
+
+	// Choose query: backfill uses a 24h time filter; subsequent polls use "*"
+	// (bookmark seek handles position, so we don't need to re-filter by time).
+	queryStr := "*"
+	if useBackfill {
+		queryStr = backfillQuery
+	}
+	qPtr, _ := syscall.UTF16PtrFromString(queryStr)
+
+	hQuery, _, callErr := procEvtQuery.Call(
+		0,
+		uintptr(unsafe.Pointer(chPtr)),
+		uintptr(unsafe.Pointer(qPtr)),
+		evtQueryChannelPath|evtQueryForwardDirection,
+	)
+	if hQuery == 0 {
+		wc.logErr("EVT_QUERY_ERROR", fmt.Sprintf("EvtQuery(%s): %v", wc.channel, callErr))
+		return
+	}
+	defer procEvtClose.Call(hQuery)
+
+	// Seek past bookmark so we only process unseen events.
+	wc.mu.Lock()
+	bh := wc.bookmarkHandle
+	wc.mu.Unlock()
+
+	if bh != 0 && !useBackfill {
+		ret, _, _ := procEvtSeek.Call(
+			hQuery,
+			0,
+			uintptr(bh),
+			0,
+			evtSeekRelativeToBookmark|evtSeekStrict,
+		)
+		if ret == 0 {
+			// Bookmark seek failed (e.g. log was cleared) — start from beginning.
+			procEvtSeek.Call(hQuery, 0, 0, 0, 0x1 /* EvtSeekRelativeToFirst */)
+		}
+	}
+
+	wc.drain(ctx, hQuery, out)
+}
+
+// drain calls EvtNext repeatedly until no more events are available,
+// emitting each parsed event on out and updating the bookmark.
+func (wc *WindowsCollector) drain(ctx context.Context, hQuery uintptr, out chan<- Event) {
+	handles := make([]syscall.Handle, 64)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -221,23 +257,23 @@ func (wc *WindowsCollector) drainBatch(ctx context.Context, out chan<- Event) {
 
 		var returned uint32
 		ret, _, _ := procEvtNext.Call(
-			uintptr(wc.subHandle),
-			uintptr(maxBatchEvents),
+			hQuery,
+			uintptr(len(handles)),
 			uintptr(unsafe.Pointer(&handles[0])),
-			0,    // timeout=0 (non-blocking)
-			0,    // reserved
+			0, // timeout = 0, non-blocking
+			0,
 			uintptr(unsafe.Pointer(&returned)),
 		)
 
 		if ret == 0 || returned == 0 {
-			// ERROR_NO_MORE_ITEMS or failure — done with this signal cycle.
+			// ERROR_NO_MORE_ITEMS — done for this poll cycle.
 			break
 		}
 
 		for i := uint32(0); i < returned; i++ {
 			h := handles[i]
+
 			if ev, err := wc.renderEvent(h); err == nil {
-				// Update live bookmark.
 				wc.mu.Lock()
 				if wc.bookmarkHandle != 0 {
 					procEvtUpdateBookmark.Call(uintptr(wc.bookmarkHandle), uintptr(h))
@@ -248,37 +284,36 @@ func (wc *WindowsCollector) drainBatch(ctx context.Context, out chan<- Event) {
 				case out <- ev:
 				case <-ctx.Done():
 					procEvtClose.Call(uintptr(h))
+					for j := i + 1; j < returned; j++ {
+						procEvtClose.Call(uintptr(handles[j]))
+					}
 					return
 				}
 			}
+
 			procEvtClose.Call(uintptr(h))
 		}
 	}
 }
 
-// renderEvent calls EvtRender to get the XML, then parses it into an Event.
+// renderEvent calls EvtRender to get the XML and parses it.
 func (wc *WindowsCollector) renderEvent(h syscall.Handle) (Event, error) {
-	// First call: get required buffer size.
 	var used, propCount uint32
+
+	// First call: size query.
 	procEvtRender.Call(
-		0,
-		uintptr(h),
-		evtRenderEventXml,
-		0,
-		0,
+		0, uintptr(h), evtRenderEventXml,
+		0, 0,
 		uintptr(unsafe.Pointer(&used)),
 		uintptr(unsafe.Pointer(&propCount)),
 	)
-
 	if used == 0 {
-		return Event{}, fmt.Errorf("EvtRender returned 0 bytes needed")
+		return Event{}, fmt.Errorf("EvtRender size query returned 0")
 	}
 
-	buf := make([]uint16, (used/2)+1)
+	buf := make([]uint16, (used/2)+2)
 	ret, _, callErr := procEvtRender.Call(
-		0,
-		uintptr(h),
-		evtRenderEventXml,
+		0, uintptr(h), evtRenderEventXml,
 		uintptr(used),
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(unsafe.Pointer(&used)),
@@ -288,11 +323,10 @@ func (wc *WindowsCollector) renderEvent(h syscall.Handle) (Event, error) {
 		return Event{}, fmt.Errorf("EvtRender failed: %v", callErr)
 	}
 
-	xmlStr := syscall.UTF16ToString(buf)
-	return parseEventXML(xmlStr, wc.channel)
+	return parseEventXML(syscall.UTF16ToString(buf), wc.channel)
 }
 
-// parseEventXML parses Windows Event Log XML into an Event.
+// parseEventXML parses Windows Event Log XML into an agent Event.
 func parseEventXML(xmlStr, channel string) (Event, error) {
 	var evx evtXML
 	if err := xml.Unmarshal([]byte(xmlStr), &evx); err != nil {
@@ -301,7 +335,6 @@ func parseEventXML(xmlStr, channel string) (Event, error) {
 
 	ts, err := time.Parse(time.RFC3339Nano, evx.System.TimeCreated.SystemTime)
 	if err != nil {
-		// Try alternate format without nanoseconds.
 		ts, err = time.Parse("2006-01-02T15:04:05.9999999Z", evx.System.TimeCreated.SystemTime)
 		if err != nil {
 			ts = time.Now().UTC()
@@ -312,7 +345,7 @@ func parseEventXML(xmlStr, channel string) (Event, error) {
 	for _, d := range evx.EventData.Data {
 		if d.Name != "" {
 			eventData[d.Name] = d.Value
-		} else {
+		} else if d.Value != "" {
 			eventData["value"] = d.Value
 		}
 	}
@@ -323,15 +356,12 @@ func parseEventXML(xmlStr, channel string) (Event, error) {
 		"computer":  evx.System.Computer,
 		"record_id": evx.System.EventRecordID,
 	}
-
 	if len(eventData) > 0 {
 		payload["event_data"] = eventData
 	} else if ud := evx.UserData.InnerXML; ud != "" {
 		payload["user_data"] = ud
 	}
 
-	// Use the actual channel from the XML when possible; fall back to the
-	// subscription channel name so events are never source-less.
 	src := evx.System.Channel
 	if src == "" {
 		src = channel
@@ -344,8 +374,9 @@ func parseEventXML(xmlStr, channel string) (Event, error) {
 	}, nil
 }
 
-// SaveBookmark renders the current bookmark handle to XML and writes it to path.
-func (wc *WindowsCollector) SaveBookmark(path string) error {
+// SaveBookmark renders the current bookmark to XML and writes it to
+// <dir>/<sanitizedChannelName>.xml, creating dir if necessary.
+func (wc *WindowsCollector) SaveBookmark(dir string) error {
 	wc.mu.Lock()
 	bh := wc.bookmarkHandle
 	wc.mu.Unlock()
@@ -354,14 +385,10 @@ func (wc *WindowsCollector) SaveBookmark(path string) error {
 		return nil
 	}
 
-	// Render bookmark to XML.
 	var used, propCount uint32
 	procEvtRender.Call(
-		0,
-		uintptr(bh),
-		evtRenderBookmark,
-		0,
-		0,
+		0, uintptr(bh), evtRenderBookmark,
+		0, 0,
 		uintptr(unsafe.Pointer(&used)),
 		uintptr(unsafe.Pointer(&propCount)),
 	)
@@ -369,11 +396,9 @@ func (wc *WindowsCollector) SaveBookmark(path string) error {
 		return fmt.Errorf("EvtRender(bookmark) returned 0 bytes")
 	}
 
-	buf := make([]uint16, (used/2)+1)
+	buf := make([]uint16, (used/2)+2)
 	ret, _, callErr := procEvtRender.Call(
-		0,
-		uintptr(bh),
-		evtRenderBookmark,
+		0, uintptr(bh), evtRenderBookmark,
 		uintptr(used),
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(unsafe.Pointer(&used)),
@@ -383,39 +408,42 @@ func (wc *WindowsCollector) SaveBookmark(path string) error {
 		return fmt.Errorf("EvtRender(bookmark) failed: %v", callErr)
 	}
 
-	xmlStr := syscall.UTF16ToString(buf)
+	path := filepath.Join(dir, sanitizeChannelName(wc.channel)+".xml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(xmlStr), 0o644)
+	return os.WriteFile(path, []byte(syscall.UTF16ToString(buf)), 0o644)
 }
 
-// cleanup closes all open handles.
-func (wc *WindowsCollector) cleanup() {
-	if wc.subHandle != 0 {
-		procEvtClose.Call(uintptr(wc.subHandle))
-		wc.subHandle = 0
-	}
-	if wc.signalHandle != 0 {
-		syscall.CloseHandle(wc.signalHandle)
-		wc.signalHandle = 0
-	}
+// sanitizeChannelName converts a Windows Event Log channel name into a safe
+// filename component by replacing path separators and colons with underscores
+// and lower-casing the result.
+func sanitizeChannelName(ch string) string {
+	replacer := strings.NewReplacer("/", "_", `\`, "_", ":", "_", " ", "_")
+	return strings.ToLower(replacer.Replace(ch))
+}
+
+func (wc *WindowsCollector) closeBookmark() {
 	wc.mu.Lock()
+	defer wc.mu.Unlock()
 	if wc.bookmarkHandle != 0 {
 		procEvtClose.Call(uintptr(wc.bookmarkHandle))
 		wc.bookmarkHandle = 0
 	}
-	wc.mu.Unlock()
+}
+
+func (wc *WindowsCollector) logErr(code, msg string) {
+	fmt.Fprintf(os.Stderr, `{"error_code":%q,"message":%q}`+"\n", code, msg)
 }
 
 // ----------------------------------------------------------------------------
-// BuildCollectors creates collectors for the requested channels.
-// Channels that fail to start are skipped (not fatal).
+// Helpers used by cmd/agent.go
 // ----------------------------------------------------------------------------
 
-// LoadBookmarkXML reads the persisted bookmark XML from disk.
-// Returns empty string if the file does not exist.
-func LoadBookmarkXML(path string) string {
+// LoadBookmarkXML reads the per-channel bookmark file from dir and returns its
+// XML content. Returns "" if the file does not exist (fresh start for that channel).
+func LoadBookmarkXML(dir, channel string) string {
+	path := filepath.Join(dir, sanitizeChannelName(channel)+".xml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -423,13 +451,13 @@ func LoadBookmarkXML(path string) string {
 	return string(data)
 }
 
-// NewWindowsCollectors constructs a WindowsCollector per channel.
-// The bookmark XML is shared across all collectors (they each update it
-// independently, so the last one wins — acceptable for Phase 1).
-func NewWindowsCollectors(channels []string, bookmarkXML string) []Collector {
+// NewWindowsCollectors creates one WindowsCollector per channel, each loading
+// its own bookmark from bookmarkDir so positions are never shared.
+func NewWindowsCollectors(channels []string, bookmarkDir string) []Collector {
 	cols := make([]Collector, 0, len(channels))
 	for _, ch := range channels {
-		cols = append(cols, NewWindowsCollector(ch, bookmarkXML))
+		xml := LoadBookmarkXML(bookmarkDir, ch)
+		cols = append(cols, NewWindowsCollector(ch, xml))
 	}
 	return cols
 }
