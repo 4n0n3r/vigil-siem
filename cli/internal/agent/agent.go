@@ -277,6 +277,15 @@ func (a *Agent) flush() {
 	a.mu.Lock()
 	a.lastFlushAt = time.Now().UTC()
 	a.mu.Unlock()
+
+	// Save bookmarks after every successful flush so a crash loses at most
+	// one flush interval worth of position (default 5s).
+	for _, col := range a.collectors {
+		if err := col.SaveBookmark(a.cfg.BookmarkFile); err != nil {
+			a.logError("BOOKMARK_SAVE_ERROR",
+				fmt.Sprintf("collector %q bookmark save failed: %v", col.Name(), err))
+		}
+	}
 }
 
 // logError writes a structured JSON error line to stderr and records the last error.

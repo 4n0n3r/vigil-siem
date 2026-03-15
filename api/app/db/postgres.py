@@ -38,10 +38,10 @@ async def init_postgres() -> None:
         pool = await asyncpg.create_pool(dsn, min_size=1, max_size=10)
         _pg_pool = pool
 
-        # Run migrations
-        migration_sql = (_MIGRATIONS_DIR / "001_init.sql").read_text()
+        # Run migrations in order.
         async with pool.acquire() as conn:
-            await conn.execute(migration_sql)
+            for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
+                await conn.execute(migration.read_text())
 
         logger.info('{"event": "postgres_connected"}')
 
