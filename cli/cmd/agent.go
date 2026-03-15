@@ -22,6 +22,7 @@ var (
 	agentBatchSize     int
 	agentFlushInterval time.Duration
 	agentBookmarkFile  string
+	agentProfile       string
 )
 
 // ----------------------------------------------------------------------------
@@ -30,15 +31,14 @@ var (
 
 var agentCmd = &cobra.Command{
 	Use:   "agent",
-	Short: "Windows Event Log collection agent",
-	Long: `The Vigil agent collects Windows Event Log events and streams them to the API.
+	Short: "Event log collection agent (Windows & Linux)",
+	Long: `The Vigil agent collects system events and streams them to the API.
 
 Subcommands:
   start      Start collecting events (foreground)
   install    Install as a Windows Service (auto-start)
   uninstall  Remove the Windows Service
   status     Show agent health and statistics`,
-	// No RunE — subcommands only.
 }
 
 // ----------------------------------------------------------------------------
@@ -47,17 +47,24 @@ Subcommands:
 
 var agentStartCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start collecting Windows Event Log events (foreground)",
-	Long: `Start the Vigil agent in the foreground. Press Ctrl+C to stop.
+	Short: "Start collecting events (foreground, Ctrl+C to stop)",
+	Long: `Start the Vigil agent in the foreground.
 
-When launched by the Windows Service Control Manager the agent automatically
-runs in service mode. Install it first with 'vigil agent install'.`,
+On Windows: collects Windows Event Log channels.
+On Linux:   collects systemd journal and syslog files.
+
+Use --profile to select a preset collector set, or --channels to override
+the Windows channel list explicitly.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := agent.DefaultConfig()
 
-		// Apply flag overrides.
+		// --channels explicitly overrides cfg.Channels (Windows only; on Linux
+		// the profile controls which collectors are added).
 		if len(agentChannels) > 0 {
 			cfg.Channels = agentChannels
+		} else {
+			// Clear the default so agent_windows.go profile mapping takes over.
+			cfg.Channels = nil
 		}
 		if agentBatchSize > 0 {
 			cfg.BatchSize = agentBatchSize
@@ -71,13 +78,8 @@ runs in service mode. Install it first with 'vigil agent install'.`,
 
 		a := agent.New(apiClient, cfg)
 
-		// Load persisted bookmark.
-		bookmarkXML := agent.LoadBookmarkXML(cfg.BookmarkFile)
-
-		// Add collectors for each configured channel.
-		for _, col := range agent.NewWindowsCollectors(cfg.Channels, bookmarkXML) {
-			a.AddCollector(col)
-		}
+		// Wire platform-specific collectors (defined in agent_windows.go / agent_linux.go).
+		addPlatformCollectors(a, cfg, agentProfile)
 
 		// Detect Windows Service invocation.
 		if agent.RunningAsService() {
@@ -99,17 +101,21 @@ runs in service mode. Install it first with 'vigil agent install'.`,
 			cancel()
 		}()
 
+		// Get the actual collector names for display.
+		collectors := a.Stats().Channels
+
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type startMsg struct {
-				Status   string   `json:"status"`
-				Channels []string `json:"channels"`
+				Status     string   `json:"status"`
+				Profile    string   `json:"profile"`
+				Collectors []string `json:"collectors"`
 			}
-			output.PrintJSON(startMsg{Status: "started", Channels: cfg.Channels})
+			output.PrintJSON(startMsg{Status: "started", Profile: agentProfile, Collectors: collectors})
 		} else {
-			fmt.Printf("Vigil agent started. Watching %d channel(s). Press Ctrl+C to stop.\n",
-				len(cfg.Channels))
-			for _, ch := range cfg.Channels {
+			fmt.Printf("Vigil agent started. Profile: %s. Watching %d collector(s). Press Ctrl+C to stop.\n",
+				agentProfile, len(collectors))
+			for _, ch := range collectors {
 				fmt.Printf("  • %s\n", ch)
 			}
 		}
@@ -120,7 +126,9 @@ runs in service mode. Install it first with 'vigil agent install'.`,
 		}
 
 		if mode == output.ModeJSON {
-			type stopMsg struct{ Status string `json:"status"` }
+			type stopMsg struct {
+				Status string `json:"status"`
+			}
 			output.PrintJSON(stopMsg{Status: "stopped"})
 		} else {
 			fmt.Println("Agent stopped.")
@@ -200,7 +208,7 @@ var agentUninstallCmd = &cobra.Command{
 
 var agentStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show agent health: channels watched, events/sec, last flush, errors",
+	Short: "Show agent health: collectors, events/sec, last flush, errors",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := agent.DefaultConfig()
 
@@ -220,7 +228,6 @@ var agentStatusCmd = &cobra.Command{
 			return nil
 		}
 
-		// Table output.
 		now := time.Now().UTC()
 		uptime := now.Sub(stats.StartedAt).Truncate(time.Second)
 
@@ -253,7 +260,7 @@ var agentStatusCmd = &cobra.Command{
 		t.Append([]string{"Flush Errors", fmt.Sprintf("%d", stats.FlushErrors)})
 		t.Append([]string{"Last Flush", lastFlush})
 		t.Append([]string{"Last Error", lastError})
-		t.Append([]string{"Channels", channels})
+		t.Append([]string{"Collectors", channels})
 		t.Render()
 		fmt.Println()
 		return nil
@@ -267,9 +274,12 @@ var agentStatusCmd = &cobra.Command{
 func init() {
 	// Flags for vigil agent start.
 	agentStartCmd.Flags().StringSliceVar(
-		&agentChannels, "channels",
-		[]string{"Security", "Microsoft-Windows-Sysmon/Operational", "Microsoft-Windows-PowerShell/Operational"},
-		"Event Log channels to subscribe to (comma-separated)",
+		&agentChannels, "channels", nil,
+		"Windows Event Log channels to monitor (comma-separated; overrides --profile on Windows)",
+	)
+	agentStartCmd.Flags().StringVar(
+		&agentProfile, "profile", "standard",
+		"Collector profile: minimal|standard|full",
 	)
 	agentStartCmd.Flags().IntVar(
 		&agentBatchSize, "batch-size", 100,
@@ -281,7 +291,7 @@ func init() {
 	)
 	agentStartCmd.Flags().StringVar(
 		&agentBookmarkFile, "bookmark-file", "",
-		"Path to bookmark file for resuming collection (default: %%APPDATA%%\\Vigil\\agent_bookmark.xml)",
+		"Path to bookmark file (default: %%APPDATA%%\\Vigil\\agent_bookmark.xml)",
 	)
 
 	// Register subcommands under agentCmd.

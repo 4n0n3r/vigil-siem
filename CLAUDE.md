@@ -37,11 +37,19 @@ This is non-negotiable — AI agents depend on it.
 - `vigil agent` — Windows Event Log collection daemon (install as Windows Service)
 - API skeleton — in-memory store, all Pydantic models, batch ingest endpoint
 
-**Next: Phase 2 — Wire real storage + detection engine.**
-- Replace in-memory store with ClickHouse Cloud
-- Wire PostgreSQL for config/state
-- Sigma rule evaluation on ingest
+**Phase 2 — complete.**
+- ClickHouse Cloud event storage (MergeTree, monthly partitions)
+- PostgreSQL for detection rules + alerts
+- Sigma rule evaluation on every ingest
 - `vigil detections` command group
+- `vigil alerts` command group
+
+**Phase 3 — complete.**
+- `vigil forensic collect` — point-in-time artifact sweep (Windows)
+- Linux agent: journald + syslog collectors
+- `--profile minimal|standard|full` for `vigil agent start`
+- 10 Sigma detection rules across 6 MITRE tactics
+- `vigil alerts visualize` — self-contained HTML dashboard
 
 ## Stack decisions (do not change without asking)
 - CLI: Go + Cobra
@@ -146,6 +154,58 @@ Use `source` prefixes: `winlog:`, `unifiedlog:`, `syslog:`, `journald:`, `file:`
 The agent core (`agent.go`) handles all batching and flushing to
 `POST /v1/events/batch`. Collectors just emit events on a channel.
 Default: flush every 5s or 100 events, whichever comes first.
+
+---
+
+## Vigil Forensic
+
+`vigil forensic collect` is a **one-shot** artifact sweep — distinct from `vigil agent`'s
+continuous stream. Use it when you want a point-in-time snapshot before or after an incident.
+
+**Artifacts collected (Windows, requires admin):**
+| Source prefix | Artifact |
+|---|---|
+| `forensic:prefetch` | Prefetch file metadata (name, size, mtime) from `C:\Windows\Prefetch` |
+| `forensic:registry` | Run/RunOnce keys from HKLM and HKCU |
+| `forensic:services` | All services from the SCM (name, binary, start type) |
+| `forensic:tasks` | Scheduled task entries from the registry TaskCache |
+| `forensic:shimcache` | AppCompatCache raw bytes (hex-encoded) for offline parsing |
+
+Results are ingested as events into the SIEM. Search with `vigil search --query forensic:`.
+
+---
+
+## Agent Profiles
+
+`vigil agent start --profile <name>` selects a preset collector configuration:
+
+| Profile | Windows channels | Linux collectors |
+|---|---|---|
+| `minimal` | Security only | journald only |
+| `standard` (default) | Security, System, Application, Sysmon, PowerShell | journald + auth.log |
+| `full` | + WMI, TaskScheduler, Defender, BITS | + syslog |
+
+Override the channel list on Windows with `--channels ch1,ch2,...` (takes precedence over profile).
+
+---
+
+## Skills
+
+Named investigation playbooks that AI agents should internalize. An agent given a task
+should identify the appropriate skill and execute the steps in order.
+
+| Skill | Trigger | Steps |
+|---|---|---|
+| `triage` | "what's happening?" | `vigil alerts list --severity high`, group by severity |
+| `investigate_alert <id>` | alert ID given | `get` alert → `search` event context → `acknowledge` with note |
+| `hunt_brute_force` | credential attacks suspected | search 4625/4648, count by source |
+| `hunt_lateral_movement` | lateral spread suspected | search 4648 + 4624 type 3, correlate hosts |
+| `deploy_detection <file>` | new Sigma rule to deploy | `create` rule → ingest test event → verify `alert_ids` non-empty |
+| `forensic_sweep` | post-incident artifact grab | `vigil forensic collect` → search `forensic:` results |
+| `build_dashboard` | reporting requested | `vigil alerts visualize --serve` |
+
+Each skill maps to a defined sequence of CLI commands with `--output json` throughout.
+Agents must not deviate from skills without explicit instruction.
 
 ---
 

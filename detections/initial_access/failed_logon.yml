@@ -1,0 +1,21 @@
+title: Failed Logon Attempt
+id: 9a8b2c1d-4e5f-6789-abcd-ef0123456789
+status: stable
+description: >
+  Detects failed logon attempts on Windows endpoints (Event ID 4625).
+  Multiple occurrences from the same source may indicate a brute force attack.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4625
+  condition: selection
+level: medium
+tags:
+  - attack.initial_access
+  - attack.credential_access
+  - attack.t1110
+falsepositives:
+  - Mistyped passwords
+  - Legitimate automated services with cached credentials

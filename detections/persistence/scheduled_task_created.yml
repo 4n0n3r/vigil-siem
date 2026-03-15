@@ -1,0 +1,22 @@
+title: Scheduled Task Created
+id: 0304bccd-4567-1234-5678-90abcdef0123
+status: stable
+description: >
+  Detects the creation of a new Windows Scheduled Task (Event ID 4698).
+  Scheduled tasks are a common persistence mechanism used by malware to
+  survive reboots and maintain access. Review the task details and author.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4698
+  condition: selection
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1053.005
+falsepositives:
+  - Legitimate software installers creating scheduled tasks
+  - Windows Update and system maintenance tasks
+  - IT automation (SCCM, Intune, GPO)

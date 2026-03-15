@@ -1,0 +1,33 @@
+title: Windows Defender Disabled or Tampered
+id: 8192030b-2345-f012-3456-7890abcdef01
+status: stable
+description: >
+  Detects attempts to disable Windows Defender via service installation (Event ID 7045)
+  or PowerShell commands that modify Defender settings (Set-MpPreference, DisableRealtimeMonitoring).
+  Attackers routinely disable AV as a pre-step to payload deployment.
+logsource:
+  product: windows
+  service: security
+detection:
+  defender_service:
+    event_id: 7045
+    event_data.ServiceName|contains:
+      - "WinDefend"
+      - "Defender"
+      - "MsMpEng"
+  powershell_disable:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "DisableRealtimeMonitoring"
+      - "Set-MpPreference"
+      - "DisableAntiSpyware"
+      - "DisableAntiVirus"
+      - "Add-MpPreference"
+  condition: defender_service or powershell_disable
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+falsepositives:
+  - Security testing in isolated lab environments
+  - Legitimate AV management tools with admin access

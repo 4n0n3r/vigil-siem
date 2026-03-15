@@ -1,0 +1,27 @@
+title: Linux SSH Brute Force Attempt
+id: 2526deef-6789-3456-789a-bcdef0123456
+status: stable
+description: >
+  Detects failed SSH authentication attempts from syslog (auth.log / secure).
+  Each failed attempt is evaluated individually; multiple events from the same
+  source IP strongly indicate brute-force activity.
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "syslog:"
+    event.message|contains:
+      - "Failed password"
+      - "Invalid user"
+      - "authentication failure"
+  condition: selection
+level: medium
+tags:
+  - attack.initial_access
+  - attack.credential_access
+  - attack.t1110
+  - attack.t1110.001
+falsepositives:
+  - Mistyped passwords by legitimate users
+  - Automated scanning from your own security tools

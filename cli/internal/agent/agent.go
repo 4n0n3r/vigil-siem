@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -170,10 +169,6 @@ func (a *Agent) Stats() AgentStats {
 // Run starts all collectors, the flush ticker, and the status file writer.
 // It blocks until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
-	if runtime.GOOS != "windows" {
-		return &PlatformError{}
-	}
-
 	a.startedAt = time.Now().UTC()
 
 	// Ensure the Vigil data directory exists.
@@ -338,9 +333,9 @@ func ReadStatusFile(path string) (*statusFilePayload, error) {
 	return &p, nil
 }
 
-// PlatformError is returned when the agent is invoked on a non-Windows platform.
+// PlatformError is returned when a feature is not supported on the current platform.
 type PlatformError struct{}
 
 func (e *PlatformError) Error() string {
-	return `{"error_code":"UNSUPPORTED_PLATFORM","message":"vigil agent is only supported on Windows (macOS and Linux coming soon)"}`
+	return `{"error_code":"UNSUPPORTED_PLATFORM","message":"this feature is not supported on the current platform"}`
 }

@@ -1,359 +1,183 @@
-# Vigil — Agent Usage Guide
+# Vigil — Agent Reference
 
-This file is for AI agents (Claude Code, Codex, and similar) using Vigil as a security operations tool.
-Read this before issuing any Vigil CLI commands.
-
----
-
-## What Vigil is
-
-Vigil is a CLI-first SIEM. You use the `vigil` binary to ingest events, search logs,
-manage detection rules, and respond to alerts. Humans stay in the loop via HITL approval
-flows — you propose actions, humans approve or steer, you continue.
-
-You are the analyst. Vigil is the platform.
+Vigil is a CLI-first SIEM. You are the analyst. Vigil is the platform.
+Read this file before issuing any Vigil CLI commands.
 
 ---
 
 ## Setup check
 
-Before doing anything, verify the API is reachable:
-
 ```
 vigil status --output json
 ```
 
-Expected healthy response:
-```json
-{
-  "api_status": "ok",
-  "clickhouse_status": "ok",
-  "postgres_status": "ok",
-  "events_last_24h": 0,
-  "open_alerts": 0,
-  "active_rules": 0,
-  "warnings": []
-}
-```
-
-If `warnings` is non-empty, the system is degraded. Ingest still works; detections and alerts
-require `postgres_status: "ok"`. Stop and report degraded state to the user before proceeding
-with detection or alert workflows.
+Healthy response: `api_status:"ok"`, `clickhouse_status:"ok"`, `postgres_status:"ok"`.
+If `warnings` is non-empty or any status is not `"ok"`, report degraded state before proceeding.
 
 ---
 
 ## Global rules
 
-- Always pass `--output json` when you need to parse output. Table output is for humans.
-- All errors go to **stderr** as `{"error_code": "...", "message": "...", "detail": "..."}`.
-  A non-zero exit code always means an error occurred.
-- Never parse table output. It is not a stable interface.
-- `VIGIL_API_URL` overrides the default API endpoint (`http://localhost:8001`).
-  Use `--api-url` per-command if needed.
+- Always `--output json` when parsing output. Never parse table output.
+- Errors go to **stderr** as `{"error_code":"...","message":"...","detail":"..."}`.
+- Non-zero exit = error occurred.
+- `VIGIL_API_URL` overrides default (`http://localhost:8001`).
 
 ---
 
-## Commands reference
+## Command reference
 
-### vigil ingest
+| Command | Key flags | Key response fields |
+|---|---|---|
+| `vigil ingest` | `--source <s>` `--event '<json>'` | `id`, `status`, `alert_ids` |
+| `vigil search` | `--query <s>` `--from` `--to` `--limit` | `events[]`, `total` |
+| `vigil detections list` | `--enabled` `--severity` | `rules[]`, `total` |
+| `vigil detections create` | `--file <yml>` `--severity` | `id`, `name`, `enabled` |
+| `vigil detections enable <id>` | — | `id`, `enabled:true` |
+| `vigil detections disable <id>` | — | `id`, `enabled:false` |
+| `vigil detections delete <id>` | `--confirm` (**human required**) | `id`, `deleted:true` |
+| `vigil alerts list` | `--status open\|ack` `--severity` `--limit` | `alerts[]`, `total` |
+| `vigil alerts get <id>` | — | full alert + `event_snapshot` |
+| `vigil alerts acknowledge <id>` | `--note <s>` | `id`, `status`, `acknowledged_at` |
+| `vigil alerts visualize` | `--out <file>` `--serve` | `file`, `total_alerts` |
+| `vigil forensic collect` | — | `ingested`, `counts{}` |
+| `vigil agent start` | `--profile minimal\|standard\|full` | streaming (no JSON output) |
 
-Send a single event to the SIEM.
+**Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:`
 
-```
-vigil ingest --source <source> --event '<json>' --output json
-```
+**Sigma modifiers supported:** `contains` `startswith` `endswith` `re`
 
-- `--source`: a string identifier for the log source. Use prefixes:
-  `winlog:Security`, `winlog:Sysmon`, `syslog:auth`, `file:auth.log`, etc.
-- `--event`: a valid JSON object. Any shape is accepted.
-
-Response:
-```json
-{
-  "id": "uuid",
-  "source": "winlog:Security",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "status": "ingested",
-  "alert_ids": ["uuid"]
-}
-```
-
-`alert_ids` is non-empty when a Sigma rule matched this event. Treat any non-empty
-`alert_ids` as a signal to review the alert immediately.
+**Condition syntax:** `AND` `OR` `NOT` `1 of X*` `all of X*`
 
 ---
 
-### vigil search
+## Error codes
 
-Query ingested events.
-
-```
-vigil search --query <string> --from <RFC3339> --to <RFC3339> --limit <int> --output json
-```
-
-All flags are optional. Without `--query`, returns recent events up to `--limit`.
-
-Response:
-```json
-{
-  "events": [
-    {
-      "id": "uuid",
-      "timestamp": "...",
-      "source": "winlog:Security",
-      "event_type": "",
-      "summary": "",
-      "event": { ... }
-    }
-  ],
-  "total": 1,
-  "query_time_ms": 2
-}
-```
+| error_code | Meaning |
+|---|---|
+| `CONNECTION_ERROR` | API unreachable — check `VIGIL_API_URL` |
+| `MISSING_FLAG` | Required flag not provided |
+| `INVALID_JSON` | `--event` is not valid JSON |
+| `DB_NOT_CONNECTED` | PostgreSQL unavailable — detections/alerts need it |
+| `NOT_FOUND` | Rule, alert, or approval does not exist |
+| `CONFIRM_REQUIRED` | Destructive command needs `--confirm` (human must authorize) |
+| `UNSUPPORTED_PLATFORM` | Feature not available on current OS |
+| `FORENSIC_PLATFORM_ERROR` | Forensic collection requires Windows |
+| `COMMAND_ERROR` | Unknown command or flag |
 
 ---
 
-### vigil detections list
+## Skills
 
-List active detection rules.
+Execute these playbooks when the matching trigger is given. Use `--output json` throughout.
 
-```
-vigil detections list --output json
-vigil detections list --enabled true --severity high --output json
-```
-
-Response:
-```json
-{
-  "rules": [
-    {
-      "id": "uuid",
-      "name": "Suspicious PowerShell",
-      "severity": "high",
-      "mitre_tactic": "execution",
-      "enabled": true,
-      "created_at": "..."
-    }
-  ],
-  "total": 1
-}
-```
-
----
-
-### vigil detections create
-
-Upload a Sigma rule YAML file.
-
-```
-vigil detections create --file ./path/to/rule.yml --output json
-```
-
-The YAML file must be a valid Sigma rule. The `title` field becomes the rule name.
-Optionally override severity: `--severity high`.
-
-Response:
-```json
-{
-  "id": "uuid",
-  "name": "Rule Title",
-  "severity": "high",
-  "enabled": true,
-  ...
-}
-```
-
-**Sigma rule format** (minimum viable):
-```yaml
-title: Suspicious Process Creation
-status: experimental
-description: Detects ...
-logsource:
-  product: windows
-  service: security
-detection:
-  selection:
-    event_id: 4688
-    event_data.CommandLine|contains:
-      - powershell
-      - cmd.exe
-  condition: selection
-level: high
-```
-
-Supported detection modifiers: `contains`, `startswith`, `endswith`, `re`.
-Supported condition syntax: `AND`, `OR`, `NOT`, `1 of <name>*`, `all of <name>*`.
-
----
-
-### vigil detections enable / disable
-
-```
-vigil detections enable <id> --output json
-vigil detections disable <id> --output json
-```
-
----
-
-### vigil detections delete
-
-Destructive. Requires explicit confirmation flag.
-
-```
-vigil detections delete <id> --confirm --output json
-```
-
-Do not pass `--confirm` without human instruction to delete.
-
----
-
-### vigil alerts list
-
-```
-vigil alerts list --output json
+### `triage`
+**Trigger:** "what's happening?" / "triage the environment"
+```bash
+vigil status --output json
+vigil alerts list --status open --output json
+vigil alerts list --status open --severity critical --output json
 vigil alerts list --status open --severity high --output json
 ```
-
-`--status` accepts: `open`, `acknowledged`, `suppressed`. Default: `open`.
-
-Response:
-```json
-{
-  "alerts": [
-    {
-      "id": "uuid",
-      "rule_id": "uuid",
-      "rule_name": "Suspicious PowerShell",
-      "event_id": "uuid",
-      "severity": "high",
-      "status": "open",
-      "matched_at": "2024-01-15T10:30:00Z",
-      "event_snapshot": { ... }
-    }
-  ],
-  "total": 1
-}
-```
+Group results by severity. Report counts and rule names to the user.
 
 ---
 
-### vigil alerts get
-
-```
+### `investigate_alert <id>`
+**Trigger:** specific alert ID or rule name given to investigate
+```bash
 vigil alerts get <id> --output json
+# Extract event_snapshot.computer (host) and event_snapshot fields
+vigil search --query "<hostname>" --limit 50 --output json
+# Determine: true positive, false positive, or needs escalation
+vigil alerts acknowledge <id> --note "<your findings>" --output json
 ```
-
-Returns the full alert including `event_snapshot` — the event payload at match time.
 
 ---
 
-### vigil alerts acknowledge
+### `hunt_brute_force`
+**Trigger:** suspected password attacks / credential abuse
+```bash
+vigil search --query "4625" --limit 200 --output json
+vigil search --query "4648" --limit 100 --output json
+```
+Group results by `event.event_data.IpAddress` and `event.event_data.TargetUserName`.
+Report top sources and whether patterns suggest spray vs. targeted.
 
+---
+
+### `hunt_lateral_movement`
+**Trigger:** suspected lateral movement / pivoting
+```bash
+vigil search --query "4648" --limit 200 --output json
+vigil search --query "4624" --limit 200 --output json
 ```
-vigil alerts acknowledge <id> --note "investigated, confirmed false positive" --output json
+Correlate SubjectUserName, TargetServerName, IpAddress across events.
+Look for the same account authenticating to multiple hosts in a short window.
+
+---
+
+### `deploy_detection <file>`
+**Trigger:** deploy a new Sigma rule
+```bash
+vigil detections create --file <file> --output json
+# Note the returned id
+vigil detections list --enabled true --output json
+# Ingest a synthetic test event that should match the rule
+vigil ingest --source test:<rule_name> --event '<matching_payload>' --output json
+# Verify alert_ids is non-empty
 ```
+If `alert_ids` is empty, the rule did not match. Re-check the detection fields.
+Do not deploy rules without verifying they fire on a known-good test event.
+
+---
+
+### `forensic_sweep`
+**Trigger:** post-incident artifact collection / "what was running on this host?"
+```bash
+vigil forensic collect --output json
+vigil search --query "forensic:registry" --limit 50 --output json
+vigil search --query "forensic:services" --limit 100 --output json
+vigil search --query "forensic:tasks" --limit 50 --output json
+```
+Look for unexpected Run keys, unsigned services, and tasks with unusual paths.
+Cross-reference with `forensic:prefetch` timestamps to establish timeline.
+
+---
+
+### `build_dashboard`
+**Trigger:** "show me a dashboard" / "visualize the alerts"
+```bash
+vigil alerts visualize --serve --output json
+```
+Reports `file` path and `total_alerts`. The browser opens automatically with `--serve`.
 
 ---
 
 ## HITL approval flow
 
-When you propose a destructive or high-impact action, Vigil will hold the action as a
-pending approval and notify the human via their configured channel (Slack, email, etc.).
-You must poll until a decision is returned.
+When Vigil holds an action as a pending approval (Phase 4+):
 
-**Pending approval response shape:**
-```json
-{
-  "approval_id": "uuid",
-  "status": "pending",
-  "action": "delete_rule",
-  "payload": { ... }
-}
-```
-
-**Poll:**
-```
+```bash
 vigil approvals get <approval_id> --output json
 ```
 
-**Decision response:**
-```json
-{
-  "approval_id": "uuid",
-  "status": "approved" | "rejected" | "other",
-  "instruction": "scope to aws:us-east-1 only",
-  "decided_at": "..."
-}
-```
+Decision response fields: `status: "approved"|"rejected"|"other"`, `instruction` (when "other").
 
-- `approved` → proceed.
-- `rejected` → stop, report back to the user.
-- `other` → read `instruction`, re-plan, re-propose.
+- `approved` → proceed
+- `rejected` → stop, report to user
+- `other` → read `instruction`, re-plan, re-propose
 
-> Note: HITL approval endpoints are Phase 3. Until then, destructive actions use `--confirm`
-> as the only gate.
-
----
-
-## Common agent workflows
-
-### Workflow: Investigate a host
-
-```bash
-# 1. Search for events from the host in the last hour
-vigil search --query "HOSTNAME" --from $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) --output json
-
-# 2. Check for open alerts related to that host
-vigil alerts list --status open --output json
-```
-
-### Workflow: Create and deploy a detection
-
-```bash
-# 1. Write the Sigma rule to a temp file, then upload
-vigil detections create --file /tmp/my_rule.yml --severity high --output json
-
-# 2. Verify it's enabled
-vigil detections list --enabled true --output json
-
-# 3. Ingest a test event and confirm alert fires
-vigil ingest --source test --event '{"event_id": 4688, "CommandLine": "powershell -enc ..."}' --output json
-# alert_ids should be non-empty
-```
-
-### Workflow: Triage open alerts
-
-```bash
-# 1. List all open high-severity alerts
-vigil alerts list --status open --severity high --output json
-
-# 2. Inspect the event that triggered each alert
-vigil alerts get <alert_id> --output json
-
-# 3. Acknowledge with investigation note
-vigil alerts acknowledge <alert_id> --note "confirmed benign — scheduled task" --output json
-```
-
----
-
-## Error codes reference
-
-| error_code | Meaning |
-|---|---|
-| `CONNECTION_ERROR` | Cannot reach the Vigil API. Check `VIGIL_API_URL` and API status. |
-| `MISSING_FLAG` | A required flag was not provided. |
-| `INVALID_JSON` | The `--event` value is not valid JSON. |
-| `DB_NOT_CONNECTED` | PostgreSQL is unavailable. Detections/alerts endpoints require it. |
-| `NOT_FOUND` | The requested resource (rule, alert, approval) does not exist. |
-| `CONFIRM_REQUIRED` | A destructive command requires `--confirm`. Do not add without human instruction. |
-| `COMMAND_ERROR` | Unknown command or flag. |
+Until Phase 4: destructive actions use `--confirm` as the only gate.
+**Never pass `--confirm` without explicit human instruction.**
 
 ---
 
 ## What NOT to do
 
 - Do not delete detection rules without explicit human instruction.
-- Do not suppress alerts without investigation.
-- Do not ingest synthetic or fabricated events into a production instance.
+- Do not suppress or bulk-acknowledge alerts without investigation.
+- Do not ingest synthetic events into a production instance.
 - Do not modify or disable rules during an active incident.
-- If `vigil status` shows warnings, report them before proceeding.
+- Do not pass `--confirm` autonomously.
+- If `vigil status` shows warnings, report before proceeding with detection workflows.

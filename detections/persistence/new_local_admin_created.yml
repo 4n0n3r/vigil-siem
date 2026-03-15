@@ -1,0 +1,24 @@
+title: New Local Administrator Account Added
+id: 920304bc-3456-0123-4567-890abcdef012
+status: stable
+description: >
+  Detects when a user account is added to the local Administrators group (Event ID 4732).
+  This is a common persistence and privilege escalation technique used after initial access.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4732
+    event_data.TargetUserName|contains:
+      - "Administrators"
+      - "administrators"
+  condition: selection
+level: high
+tags:
+  - attack.persistence
+  - attack.privilege_escalation
+  - attack.t1098
+falsepositives:
+  - Authorized IT operations adding service accounts
+  - Planned administrator provisioning

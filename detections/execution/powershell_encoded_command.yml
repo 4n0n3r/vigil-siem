@@ -1,0 +1,31 @@
+title: PowerShell Encoded Command Execution
+id: 5e6f7081-9012-cdef-0123-4567890abcde
+status: stable
+description: >
+  Detects PowerShell processes launched with encoded command arguments
+  (-enc, -EncodedCommand, -ec). This is a common technique used by
+  malware and post-exploitation frameworks to obfuscate payloads.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4688
+    event_data.NewProcessName|endswith: "powershell.exe"
+  encoded:
+    event_data.CommandLine|contains:
+      - " -enc "
+      - " -EncodedCommand "
+      - " -ec "
+      - " /enc "
+      - " /EncodedCommand "
+  condition: selection and encoded
+level: high
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.defense_evasion
+  - attack.t1027
+falsepositives:
+  - Legitimate automation scripts using encoded parameters
+  - Some configuration management tools (Chef, Puppet DSC)

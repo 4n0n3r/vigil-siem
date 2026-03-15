@@ -3,6 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/vigil/vigil/internal/output"
@@ -50,6 +57,9 @@ var (
 	alertsListLimit    int
 
 	alertsAcknowledgeNote string
+
+	alertsVisualizeOut   string
+	alertsVisualizeServe bool
 )
 
 // ----------------------------------------------------------------------------
@@ -207,6 +217,293 @@ var alertsAcknowledgeCmd = &cobra.Command{
 }
 
 // ----------------------------------------------------------------------------
+// vigil alerts visualize — self-contained HTML dashboard
+// ----------------------------------------------------------------------------
+
+// vizAlert holds pre-computed fields for the HTML template.
+type vizAlert struct {
+	ShortID      string
+	RuleName     string
+	Severity     string
+	Status       string
+	MatchedAt    string
+	Host         string
+}
+
+// vizData is the data passed to the HTML template.
+type vizData struct {
+	GeneratedAt    string
+	TotalAlerts    int
+	CriticalCount  int
+	HighCount      int
+	MediumCount    int
+	LowCount       int
+	TimelineLabels []string
+	TimelineCounts []int
+	Alerts         []vizAlert
+}
+
+const dashboardHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigil — Alert Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0e1a;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.header{background:#131929;border-bottom:1px solid #1e2d4a;padding:18px 32px;display:flex;align-items:center;gap:12px}
+.logo{font-size:20px;font-weight:700;color:#00d4ff;letter-spacing:3px}
+.meta{font-size:12px;color:#64748b;margin-left:auto}
+.main{padding:28px 32px;max-width:1400px;margin:0 auto}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.stat{background:#131929;border:1px solid #1e2d4a;border-radius:8px;padding:20px}
+.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px}
+.stat-value{font-size:36px;font-weight:700}
+.c-critical{color:#ff4757}.c-high{color:#ff6b35}.c-medium{color:#ffa502}.c-low{color:#2ed573}
+.charts{display:grid;grid-template-columns:280px 1fr;gap:20px;margin-bottom:24px}
+.card{background:#131929;border:1px solid #1e2d4a;border-radius:8px;padding:20px}
+.card-title{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:16px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:9px 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b;border-bottom:1px solid #1e2d4a}
+td{padding:9px 12px;font-size:13px;border-bottom:1px solid #0d1524}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-critical{background:#3d0f15;color:#ff4757}
+.badge-high{background:#3d1f0f;color:#ff6b35}
+.badge-medium{background:#3d2e0f;color:#ffa502}
+.badge-low{background:#0f3d1f;color:#2ed573}
+.badge-open{background:#0f1d3d;color:#00d4ff}
+.badge-acknowledged{background:#1e2d4a;color:#64748b}
+.mono{font-family:monospace;font-size:11px;color:#64748b}
+.footer{text-align:center;padding:24px;color:#334155;font-size:11px}
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="logo">▶ VIGIL</span>
+  <span style="color:#64748b;font-size:13px">Security Operations Dashboard</span>
+  <span class="meta">Generated {{.GeneratedAt}} &middot; {{.TotalAlerts}} open alerts</span>
+</div>
+<div class="main">
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Critical</div><div class="stat-value c-critical">{{.CriticalCount}}</div></div>
+    <div class="stat"><div class="stat-label">High</div><div class="stat-value c-high">{{.HighCount}}</div></div>
+    <div class="stat"><div class="stat-label">Medium</div><div class="stat-value c-medium">{{.MediumCount}}</div></div>
+    <div class="stat"><div class="stat-label">Low</div><div class="stat-value c-low">{{.LowCount}}</div></div>
+  </div>
+  <div class="charts">
+    <div class="card">
+      <div class="card-title">Severity Breakdown</div>
+      <canvas id="donut"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">Alert Timeline — Last 7 Days</div>
+      <canvas id="timeline"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Recent Alerts</div>
+    <table>
+      <thead><tr><th>Matched At</th><th>Rule</th><th>Severity</th><th>Status</th><th>Host</th><th>ID</th></tr></thead>
+      <tbody>
+        {{range .Alerts}}
+        <tr>
+          <td>{{.MatchedAt}}</td>
+          <td>{{.RuleName}}</td>
+          <td><span class="badge badge-{{.Severity}}">{{.Severity}}</span></td>
+          <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+          <td>{{.Host}}</td>
+          <td class="mono">{{.ShortID}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="6" style="text-align:center;color:#64748b;padding:32px">No open alerts</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="footer">Vigil SIEM &middot; vigil alerts visualize &middot; open alerts only</div>
+<script>
+new Chart(document.getElementById('donut'),{
+  type:'doughnut',
+  data:{
+    labels:['Critical','High','Medium','Low'],
+    datasets:[{data:[{{.CriticalCount}},{{.HighCount}},{{.MediumCount}},{{.LowCount}}],backgroundColor:['#ff4757','#ff6b35','#ffa502','#2ed573'],borderWidth:0}]
+  },
+  options:{plugins:{legend:{labels:{color:'#e2e8f0',font:{size:12}}}},cutout:'65%'}
+});
+new Chart(document.getElementById('timeline'),{
+  type:'line',
+  data:{
+    labels:[{{range .TimelineLabels}}"{{.}}",{{end}}],
+    datasets:[{label:'Alerts',data:[{{range .TimelineCounts}}{{.}},{{end}}],borderColor:'#00d4ff',backgroundColor:'rgba(0,212,255,0.08)',tension:0.4,fill:true,pointBackgroundColor:'#00d4ff'}]
+  },
+  options:{
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{ticks:{color:'#64748b'},grid:{color:'#1e2d4a'}},
+      y:{ticks:{color:'#64748b',stepSize:1},grid:{color:'#1e2d4a'},beginAtZero:true}
+    }
+  }
+});
+</script>
+</body>
+</html>`
+
+var alertsVisualizeCmd = &cobra.Command{
+	Use:   "visualize",
+	Short: "Generate a self-contained HTML alert dashboard",
+	Long: `Fetch open alerts from the API and render a self-contained HTML dashboard.
+
+The dashboard includes a severity breakdown donut chart, a 7-day alert timeline,
+and a recent alerts table. All data is baked into the HTML — no server required.
+
+    vigil alerts visualize --out dashboard.html --serve`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// Fetch open alerts.
+		params := map[string]string{
+			"status": "open",
+			"limit":  "500",
+		}
+		var resp alertListResponse
+		if err := apiClient.Get("/v1/alerts", params, &resp); err != nil {
+			output.PrintErrorFromErr(err)
+			return nil
+		}
+
+		// Build vizData.
+		now := time.Now().UTC()
+		data := vizData{
+			GeneratedAt: now.Format("2006-01-02 15:04 UTC"),
+			TotalAlerts: resp.Total,
+		}
+
+		// Severity counts.
+		for _, a := range resp.Alerts {
+			switch strings.ToLower(a.Severity) {
+			case "critical":
+				data.CriticalCount++
+			case "high":
+				data.HighCount++
+			case "medium":
+				data.MediumCount++
+			default:
+				data.LowCount++
+			}
+		}
+
+		// Timeline: last 7 days.
+		dayCount := make(map[string]int)
+		for i := 6; i >= 0; i-- {
+			day := now.AddDate(0, 0, -i).Format("01/02")
+			data.TimelineLabels = append(data.TimelineLabels, day)
+			dayCount[day] = 0
+		}
+		for _, a := range resp.Alerts {
+			if t, err := time.Parse(time.RFC3339, a.MatchedAt); err == nil {
+				day := t.UTC().Format("01/02")
+				if _, ok := dayCount[day]; ok {
+					dayCount[day]++
+				}
+			}
+		}
+		for _, label := range data.TimelineLabels {
+			data.TimelineCounts = append(data.TimelineCounts, dayCount[label])
+		}
+
+		// Build alert rows (cap at 50 for HTML size).
+		limit := len(resp.Alerts)
+		if limit > 50 {
+			limit = 50
+		}
+		for _, a := range resp.Alerts[:limit] {
+			shortID := a.ID
+			if len(shortID) > 8 {
+				shortID = shortID[:8]
+			}
+			host := ""
+			if a.EventSnapshot != nil {
+				if h, ok := a.EventSnapshot["computer"].(string); ok {
+					host = h
+				}
+			}
+			// Truncate MatchedAt for readability.
+			matchedAt := a.MatchedAt
+			if t, err := time.Parse(time.RFC3339, a.MatchedAt); err == nil {
+				matchedAt = t.UTC().Format("2006-01-02 15:04")
+			}
+			data.Alerts = append(data.Alerts, vizAlert{
+				ShortID:   shortID,
+				RuleName:  a.RuleName,
+				Severity:  strings.ToLower(a.Severity),
+				Status:    strings.ToLower(a.Status),
+				MatchedAt: matchedAt,
+				Host:      host,
+			})
+		}
+
+		// Determine output file path.
+		outPath := alertsVisualizeOut
+		if outPath == "" {
+			outPath = fmt.Sprintf("vigil_alerts_%s.html", now.Format("20060102_150405"))
+		}
+		outPath, _ = filepath.Abs(outPath)
+
+		// Render the template.
+		tmpl, err := template.New("dashboard").Parse(dashboardHTML)
+		if err != nil {
+			output.PrintError("TEMPLATE_ERROR", "failed to parse HTML template", err.Error())
+			return nil
+		}
+
+		f, err := os.Create(outPath)
+		if err != nil {
+			output.PrintError("FILE_CREATE_ERROR", "failed to create output file", err.Error())
+			return nil
+		}
+		defer f.Close()
+
+		if err := tmpl.Execute(f, data); err != nil {
+			output.PrintError("TEMPLATE_RENDER_ERROR", "failed to render HTML dashboard", err.Error())
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			type result struct {
+				File        string `json:"file"`
+				TotalAlerts int    `json:"total_alerts"`
+			}
+			output.PrintJSON(result{File: outPath, TotalAlerts: data.TotalAlerts})
+		} else {
+			fmt.Printf("Dashboard written to: %s\n", outPath)
+			fmt.Printf("Total alerts shown:   %d\n", data.TotalAlerts)
+		}
+
+		if alertsVisualizeServe {
+			openBrowser(outPath)
+		}
+
+		return nil
+	},
+}
+
+// openBrowser opens a file URL in the system's default browser.
+func openBrowser(path string) {
+	var c *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", path)
+	case "darwin":
+		c = exec.Command("open", path)
+	default:
+		c = exec.Command("xdg-open", path)
+	}
+	_ = c.Start()
+}
+
+// ----------------------------------------------------------------------------
 // init: wire flags and subcommands
 // ----------------------------------------------------------------------------
 
@@ -222,8 +519,15 @@ func init() {
 	// alerts acknowledge
 	alertsAcknowledgeCmd.Flags().StringVar(&alertsAcknowledgeNote, "note", "", "Optional note to attach to the acknowledgement")
 
+	// alerts visualize
+	alertsVisualizeCmd.Flags().StringVar(&alertsVisualizeOut, "out", "",
+		"Output file path (default: vigil_alerts_<timestamp>.html)")
+	alertsVisualizeCmd.Flags().BoolVar(&alertsVisualizeServe, "serve", false,
+		"Open the dashboard in the default browser after writing")
+
 	// Register subcommands.
 	alertsCmd.AddCommand(alertsListCmd)
 	alertsCmd.AddCommand(alertsGetCmd)
 	alertsCmd.AddCommand(alertsAcknowledgeCmd)
+	alertsCmd.AddCommand(alertsVisualizeCmd)
 }

@@ -1,0 +1,35 @@
+title: PowerShell Download Cradle
+id: 6f708192-0123-def0-1234-567890abcdef
+status: stable
+description: >
+  Detects PowerShell commands that download and execute code from a remote source
+  (IEX, Invoke-Expression, DownloadString, WebClient). This pattern is used by
+  virtually all PowerShell-based malware for in-memory payload staging.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4688
+    event_data.NewProcessName|endswith: "powershell.exe"
+  download:
+    event_data.CommandLine|contains:
+      - "IEX"
+      - "Invoke-Expression"
+      - "DownloadString"
+      - "DownloadFile"
+      - "WebClient"
+      - "Net.WebClient"
+      - "Invoke-WebRequest"
+      - "iwr "
+      - "curl "
+  condition: selection and download
+level: high
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.command_and_control
+  - attack.t1105
+falsepositives:
+  - PowerShell package managers (nuget, chocolatey)
+  - Legitimate IT automation downloading scripts

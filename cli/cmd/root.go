@@ -62,4 +62,5 @@ func init() {
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(detectionsCmd)
 	rootCmd.AddCommand(alertsCmd)
+	rootCmd.AddCommand(forensicCmd)
 }
