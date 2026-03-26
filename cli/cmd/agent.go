@@ -298,8 +298,9 @@ var agentStatusCmd = &cobra.Command{
 // ----------------------------------------------------------------------------
 
 var (
-	agentRegisterName     string
-	agentRegisterHostname string
+	agentRegisterName        string
+	agentRegisterHostname    string
+	agentRegisterEnrollToken string
 )
 
 var agentRegisterCmd = &cobra.Command{
@@ -321,9 +322,10 @@ automatically with every future request.  The key is shown only once.`,
 		}
 
 		type registerReq struct {
-			Name     string `json:"name"`
-			Hostname string `json:"hostname"`
-			OS       string `json:"os"`
+			Name        string `json:"name"`
+			Hostname    string `json:"hostname"`
+			OS          string `json:"os"`
+			EnrollToken string `json:"enroll_token,omitempty"`
 		}
 		type registerResp struct {
 			ID        string `json:"id"`
@@ -332,10 +334,17 @@ automatically with every future request.  The key is shown only once.`,
 			CreatedAt string `json:"created_at"`
 		}
 
+		// Also accept enrollment token from VIGIL_ENROLL_TOKEN env var.
+		enrollToken := agentRegisterEnrollToken
+		if enrollToken == "" {
+			enrollToken = os.Getenv("VIGIL_ENROLL_TOKEN")
+		}
+
 		body := registerReq{
-			Name:     name,
-			Hostname: hostname,
-			OS:       runtime.GOOS,
+			Name:        name,
+			Hostname:    hostname,
+			OS:          runtime.GOOS,
+			EnrollToken: enrollToken,
 		}
 
 		var resp registerResp
@@ -409,6 +418,10 @@ func init() {
 	agentRegisterCmd.Flags().StringVar(
 		&agentRegisterHostname, "hostname", "",
 		"Override hostname reported to the API (default: os.Hostname())",
+	)
+	agentRegisterCmd.Flags().StringVar(
+		&agentRegisterEnrollToken, "enroll-token", "",
+		"Enrollment token (required when server has VIGIL_REQUIRE_AUTH=true; also reads VIGIL_ENROLL_TOKEN env var)",
 	)
 
 	// Register subcommands under agentCmd.

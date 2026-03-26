@@ -73,6 +73,7 @@ Set VIGIL_API_URL to point at your Vigil API instance.`,
 		}
 
 		apiClient = client.New(baseURL, apiKey)
+		apiClient.AdminKey = os.Getenv("VIGIL_ADMIN_KEY")
 	},
 }
 

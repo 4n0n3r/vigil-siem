@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from app.db import postgres, pg_endpoints
+from app.db import postgres, pg_endpoints, pg_tokens
 from app.models import (
     Endpoint,
     EndpointHeartbeatResponse,
@@ -20,6 +21,8 @@ from app.models import (
     EndpointRegisterResponse,
     ErrorResponse,
 )
+
+_REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +71,33 @@ def _row_to_endpoint(row: dict) -> Endpoint:
 
 @router.post("/endpoints/register", response_model=EndpointRegisterResponse, status_code=201)
 async def register_endpoint(body: EndpointRegisterRequest):
-    """Register a new endpoint and return a one-time API key."""
+    """Register a new endpoint and return a one-time API key.
+
+    When VIGIL_REQUIRE_AUTH=true an enrollment token must be provided in the
+    request body. Generate one with: vigil token create
+    """
     pool = postgres.get_pool()
     if pool is None:
         return _db_unavailable()
+
+    # Validate enrollment token when auth is enforced.
+    if _REQUIRE_AUTH:
+        if not body.enroll_token:
+            err = ErrorResponse(
+                error_code="ENROLL_TOKEN_REQUIRED",
+                message="An enrollment token is required to register an endpoint.",
+                hint="Generate one on the server with: vigil token create",
+            )
+            return JSONResponse(status_code=403, content=err.model_dump())
+
+        token_row = await pg_tokens.validate_and_consume(body.enroll_token)
+        if token_row is None:
+            err = ErrorResponse(
+                error_code="INVALID_ENROLL_TOKEN",
+                message="Enrollment token is invalid, expired, or already used.",
+                hint="Generate a new token with: vigil token create",
+            )
+            return JSONResponse(status_code=403, content=err.model_dump())
 
     try:
         row = await pg_endpoints.register_endpoint(

@@ -194,6 +194,7 @@ class EndpointRegisterRequest(BaseModel):
     hostname: str = ""
     os: str = ""
     metadata: dict[str, Any] = {}
+    enroll_token: str = ""  # required when VIGIL_REQUIRE_AUTH=true
 
 
 class EndpointRegisterResponse(BaseModel):
@@ -221,6 +222,39 @@ class EndpointListResponse(BaseModel):
 class EndpointHeartbeatResponse(BaseModel):
     id: str
     last_seen: datetime
+
+
+# ---------------------------------------------------------------------------
+# Enrollment tokens
+# ---------------------------------------------------------------------------
+
+class EnrollmentTokenCreate(BaseModel):
+    label: str = ""
+    single_use: bool = True
+    expires_hours: int | None = 24  # None or 0 = no expiry
+
+
+class EnrollmentToken(BaseModel):
+    id: str
+    label: str
+    single_use: bool
+    used: bool
+    expires_at: datetime | None = None
+    created_at: datetime
+
+
+class EnrollmentTokenCreatedResponse(BaseModel):
+    id: str
+    label: str
+    token: str  # plaintext — returned once, never stored
+    single_use: bool
+    expires_at: datetime | None = None
+    created_at: datetime
+
+
+class EnrollmentTokenListResponse(BaseModel):
+    tokens: list[EnrollmentToken]
+    total: int
 
 
 # ---------------------------------------------------------------------------

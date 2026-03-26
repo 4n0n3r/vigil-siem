@@ -7,14 +7,16 @@
 #   & ([scriptblock]::Create((irm .../install.ps1))) -ApiUrl http://your-server:8001
 #
 # Parameters:
-#   -InstallDir   Where to place vigil.exe (default: C:\Program Files\Vigil)
-#   -ApiUrl       Vigil API URL to configure after install
-#   -Version      Pin a specific version (default: latest)
+#   -InstallDir    Where to place vigil.exe (default: C:\Program Files\Vigil)
+#   -ApiUrl        Vigil API URL to configure after install
+#   -EnrollToken   Enrollment token (required when server has VIGIL_REQUIRE_AUTH=true)
+#   -Version       Pin a specific version (default: latest)
 
 param(
-    [string]$InstallDir = "$env:ProgramFiles\Vigil",
-    [string]$ApiUrl     = "",
-    [string]$Version    = ""
+    [string]$InstallDir  = "$env:ProgramFiles\Vigil",
+    [string]$ApiUrl      = "",
+    [string]$EnrollToken = $env:VIGIL_ENROLL_TOKEN,
+    [string]$Version     = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,7 +94,12 @@ try {
         Write-Host "  vigil config set api_url http://your-vigil-server:8001"
     }
 
-    Write-Host "  vigil agent register --name $env:COMPUTERNAME"
+    if ($EnrollToken) {
+        Write-Host "  vigil agent register --name $env:COMPUTERNAME --enroll-token $EnrollToken"
+    } else {
+        Write-Host "  vigil agent register --name $env:COMPUTERNAME"
+        Write-Host "  # (If the server requires auth, add: --enroll-token <token>)"
+    }
     Write-Host "  vigil agent install"
     Write-Host "  sc start VIGILAgent"
 

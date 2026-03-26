@@ -25,6 +25,7 @@ from app.routes import detections as detections_router_module
 from app.routes import alerts as alerts_router_module
 from app.routes import hunt as hunt_router_module
 from app.routes import endpoints as endpoints_router_module
+from app.routes import tokens as tokens_router_module
 from app.db import clickhouse, postgres, pg_endpoints
 from app.sigma import loader
 
@@ -68,8 +69,10 @@ app = FastAPI(
 
 REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
 
-# Paths that are always public regardless of auth mode.
+# Paths that never require an endpoint API key (they have their own auth or are truly open).
 _PUBLIC_PATHS = {"/v1/status", "/v1/endpoints/register"}
+# Prefixes that are exempt from endpoint-key auth (token routes have their own admin-key check).
+_PUBLIC_PREFIXES = ("/v1/tokens",)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -80,7 +83,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         key = request.headers.get("X-Vigil-Key", "")
         endpoint = await pg_endpoints.validate_api_key(key) if key else None
 
-        if REQUIRE_AUTH and request.url.path not in _PUBLIC_PATHS:
+        path = request.url.path
+        is_public = path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES)
+
+        if REQUIRE_AUTH and not is_public:
             if endpoint is None:
                 status_code = 401 if not key else 403
                 error_code = "UNAUTHORIZED" if not key else "FORBIDDEN"
@@ -171,3 +177,4 @@ app.include_router(detections_router_module.router, prefix="/v1")
 app.include_router(alerts_router_module.router, prefix="/v1")
 app.include_router(hunt_router_module.router, prefix="/v1")
 app.include_router(endpoints_router_module.router, prefix="/v1")
+app.include_router(tokens_router_module.router, prefix="/v1")

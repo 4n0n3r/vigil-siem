@@ -8,20 +8,24 @@
 #   curl -fsSL .../install.sh -o install.sh && bash install.sh --api-url http://your-server:8001
 #
 # Environment overrides:
-#   VIGIL_INSTALL_DIR   Where to place the binary (default: /usr/local/bin)
-#   VIGIL_VERSION       Pin a specific version (default: latest)
+#   VIGIL_INSTALL_DIR    Where to place the binary (default: /usr/local/bin)
+#   VIGIL_VERSION        Pin a specific version (default: latest)
+#   VIGIL_URL            Vigil API URL (same as --api-url)
+#   VIGIL_ENROLL_TOKEN   Enrollment token (required when server has VIGIL_REQUIRE_AUTH=true)
 
 set -euo pipefail
 
 REPO="4n0n3r/vigil-siem"
 INSTALL_DIR="${VIGIL_INSTALL_DIR:-/usr/local/bin}"
 BINARY="vigil"
-API_URL=""
+API_URL="${VIGIL_URL:-}"
+ENROLL_TOKEN="${VIGIL_ENROLL_TOKEN:-}"
 
 # Parse optional flags
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --api-url) API_URL="$2"; shift 2 ;;
+    --enroll-token) ENROLL_TOKEN="$2"; shift 2 ;;
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     --version) VIGIL_VERSION="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
@@ -115,7 +119,14 @@ if [[ -n "$API_URL" ]]; then
 else
   echo "  vigil config set api_url http://your-vigil-server:8001"
 fi
-echo "  vigil agent register --name $(hostname -s 2>/dev/null || hostname)"
+
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+if [[ -n "$ENROLL_TOKEN" ]]; then
+  echo "  vigil agent register --name $HOSTNAME_SHORT --enroll-token $ENROLL_TOKEN"
+else
+  echo "  vigil agent register --name $HOSTNAME_SHORT"
+  echo "  # (If the server requires auth, add: --enroll-token <token>)"
+fi
 echo "  vigil agent start"
 echo ""
 echo "To install as a systemd service:"
@@ -127,6 +138,9 @@ echo ""
 echo "  [Service]"
 echo "  ExecStart=$INSTALL_DIR/$BINARY agent start --profile standard"
 echo "  Environment=VIGIL_API_URL=${API_URL:-http://your-vigil-server:8001}"
+if [[ -n "$ENROLL_TOKEN" ]]; then
+  echo "  Environment=VIGIL_ENROLL_TOKEN=$ENROLL_TOKEN"
+fi
 echo "  Restart=on-failure"
 echo ""
 echo "  [Install]"

@@ -27,6 +27,7 @@ func (e *APIError) Error() string {
 type Client struct {
 	BaseURL    string
 	APIKey     string
+	AdminKey   string // sent as X-Vigil-Admin-Key when set (for token management)
 	HTTPClient *http.Client
 }
 
@@ -147,6 +148,9 @@ func (c *Client) Delete(path string) error {
 func (c *Client) do(req *http.Request, dest interface{}) error {
 	if c.APIKey != "" {
 		req.Header.Set("X-Vigil-Key", c.APIKey)
+	}
+	if c.AdminKey != "" {
+		req.Header.Set("X-Vigil-Admin-Key", c.AdminKey)
 	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
