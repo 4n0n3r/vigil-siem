@@ -1,18 +1,23 @@
-BINARY := vigil
-BIN_DIR := bin
+BINARY     := vigil
+BIN_DIR    := bin
 INSTALL_DIR := /usr/local/bin
+
+# Version is injected at build time. Override with: make build VERSION=1.2.3
+VERSION ?= dev
+
+LDFLAGS := -s -w -X 'github.com/vigil/vigil/cmd.Version=$(VERSION)'
 
 .PHONY: build build-cloud install test tidy clean
 
 ## build: compile the vigil binary into bin/
 build:
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY) .
+	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) .
 
 ## build-cloud: compile the vigil binary with cloud collector support (AWS/Azure/GCP)
 build-cloud:
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 go build -tags cloud -trimpath -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY) .
+	CGO_ENABLED=0 go build -tags cloud -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) .
 
 ## install: build then copy the binary to /usr/local/bin
 install: build
