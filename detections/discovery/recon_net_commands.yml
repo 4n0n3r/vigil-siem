@@ -1,0 +1,55 @@
+title: Reconnaissance via Net and WMIC Commands
+id: c3d4e5f6-7890-1234-cdef-234567890123
+status: stable
+description: >
+  Detects execution of built-in Windows commands commonly used for
+  local and network reconnaissance: net user, net localgroup, net group,
+  net view, net share, wmic, and nltest. Single occurrences may be benign;
+  clusters from a non-administrative context are high-fidelity.
+logsource:
+  product: windows
+  service: security
+detection:
+  sysmon_net:
+    event_id: 1
+    event_data.Image|contains: "net.exe"
+    event_data.CommandLine|contains:
+      - " user"
+      - " localgroup"
+      - " group"
+      - " view"
+      - " share"
+      - " accounts"
+  sysmon_net1:
+    event_id: 1
+    event_data.Image|contains: "net1.exe"
+    event_data.CommandLine|contains:
+      - " user"
+      - " localgroup"
+      - " group"
+  sysmon_nltest:
+    event_id: 1
+    event_data.Image|contains: "nltest.exe"
+  sysmon_wmic_recon:
+    event_id: 1
+    event_data.Image|contains: "wmic.exe"
+    event_data.CommandLine|contains:
+      - "useraccount"
+      - "group"
+      - "computersystem"
+      - "logicaldisk"
+      - "share"
+  # Security 4688 fallback (no CommandLine filter — fires on any net.exe execution)
+  sec_nltest:
+    event_id: 4688
+    event_data.NewProcessName|contains: "nltest.exe"
+  condition: sysmon_net or sysmon_net1 or sysmon_nltest or sysmon_wmic_recon or sec_nltest
+level: medium
+tags:
+  - attack.discovery
+  - attack.t1069
+  - attack.t1087
+  - attack.t1135
+falsepositives:
+  - IT administrators performing routine account and share audits
+  - Software inventory and patch management tools

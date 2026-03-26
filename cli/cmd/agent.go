@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/vigil/vigil/internal/agent"
+	"github.com/vigil/vigil/internal/config"
 	"github.com/vigil/vigil/internal/output"
 )
 
@@ -150,6 +152,21 @@ var agentInstallCmd = &cobra.Command{
 			return nil
 		}
 
+		// Write machine-wide config to ProgramData so the Windows Service
+		// (LocalSystem) can read the API URL and key — it cannot access the
+		// per-user APPDATA config file.
+		if machPath := config.MachineConfigPath(); machPath != "" {
+			machCfg := config.Config{
+				APIURL:       apiClient.BaseURL,
+				APIKey:       apiClient.APIKey,
+				EndpointID:   globalConfig.EndpointID,
+				EndpointName: globalConfig.EndpointName,
+			}
+			if err := config.Save(machPath, machCfg); err != nil {
+				fmt.Printf("warning: could not write machine config (%s): %v\n", machPath, err)
+			}
+		}
+
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type result struct {
@@ -236,6 +253,14 @@ var agentStatusCmd = &cobra.Command{
 			lastFlush = fmt.Sprintf("%s ago", now.Sub(stats.LastFlushAt).Truncate(time.Second))
 		}
 
+		lastEvent := "never"
+		if !stats.LastEventAt.IsZero() {
+			lastEvent = fmt.Sprintf("%s ago (%s)",
+				now.Sub(stats.LastEventAt).Truncate(time.Second),
+				stats.LastEventAt.Format("15:04:05"),
+			)
+		}
+
 		lastError := "none"
 		if stats.LastError != "" {
 			lastError = stats.LastError
@@ -258,11 +283,93 @@ var agentStatusCmd = &cobra.Command{
 		t.Append([]string{"Events Collected", fmt.Sprintf("%d", stats.EventsCollected)})
 		t.Append([]string{"Events Flushed", fmt.Sprintf("%d", stats.EventsFlushed)})
 		t.Append([]string{"Flush Errors", fmt.Sprintf("%d", stats.FlushErrors)})
+		t.Append([]string{"Last Log Collected", lastEvent})
 		t.Append([]string{"Last Flush", lastFlush})
 		t.Append([]string{"Last Error", lastError})
 		t.Append([]string{"Collectors", channels})
 		t.Render()
 		fmt.Println()
+		return nil
+	},
+}
+
+// ----------------------------------------------------------------------------
+// vigil agent register
+// ----------------------------------------------------------------------------
+
+var (
+	agentRegisterName     string
+	agentRegisterHostname string
+)
+
+var agentRegisterCmd = &cobra.Command{
+	Use:   "register",
+	Short: "Register this endpoint with the Vigil API and save credentials",
+	Long: `Register this endpoint with the Vigil API.
+
+The returned API key is saved to the local config file and will be sent
+automatically with every future request.  The key is shown only once.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		hostname := agentRegisterHostname
+		if hostname == "" {
+			h, _ := os.Hostname()
+			hostname = h
+		}
+		name := agentRegisterName
+		if name == "" {
+			name = hostname
+		}
+
+		type registerReq struct {
+			Name     string `json:"name"`
+			Hostname string `json:"hostname"`
+			OS       string `json:"os"`
+		}
+		type registerResp struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			APIKey    string `json:"api_key"`
+			CreatedAt string `json:"created_at"`
+		}
+
+		body := registerReq{
+			Name:     name,
+			Hostname: hostname,
+			OS:       runtime.GOOS,
+		}
+
+		var resp registerResp
+		if err := apiClient.Post("/v1/endpoints/register", body, &resp); err != nil {
+			output.PrintErrorFromErr(err)
+			return nil
+		}
+
+		// Persist api_key, endpoint_id, endpoint_name to config.
+		cfgPath := config.DefaultConfigPath()
+		cfg, _ := config.Load(cfgPath)
+		cfg.APIKey = resp.APIKey
+		cfg.EndpointID = resp.ID
+		cfg.EndpointName = resp.Name
+		if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
+			output.PrintError("CONFIG_SAVE_ERROR", "registered but could not save credentials", saveErr.Error())
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			output.PrintJSON(resp)
+			return nil
+		}
+
+		t := output.NewTable([]string{"Field", "Value"})
+		t.Append([]string{"ID", resp.ID})
+		t.Append([]string{"Name", resp.Name})
+		t.Append([]string{"API Key", resp.APIKey})
+		t.Append([]string{"Created At", resp.CreatedAt})
+		t.Render()
+		fmt.Println()
+		fmt.Println("API key saved to:", cfgPath)
+		fmt.Println("IMPORTANT: Save this key — it will not be shown again.")
 		return nil
 	},
 }
@@ -294,11 +401,22 @@ func init() {
 		"Directory for per-channel bookmark files (default: %%APPDATA%%\\Vigil\\bookmarks\\)",
 	)
 
+	// Flags for vigil agent register.
+	agentRegisterCmd.Flags().StringVar(
+		&agentRegisterName, "name", "",
+		"Friendly name for this endpoint (default: hostname)",
+	)
+	agentRegisterCmd.Flags().StringVar(
+		&agentRegisterHostname, "hostname", "",
+		"Override hostname reported to the API (default: os.Hostname())",
+	)
+
 	// Register subcommands under agentCmd.
 	agentCmd.AddCommand(agentStartCmd)
 	agentCmd.AddCommand(agentInstallCmd)
 	agentCmd.AddCommand(agentUninstallCmd)
 	agentCmd.AddCommand(agentStatusCmd)
+	agentCmd.AddCommand(agentRegisterCmd)
 
 	// Register agentCmd under rootCmd.
 	rootCmd.AddCommand(agentCmd)

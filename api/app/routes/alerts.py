@@ -63,6 +63,7 @@ def _row_to_alert(row) -> Alert:
     elif snapshot is None:
         snapshot = {}
 
+    endpoint_id = row.get("endpoint_id")
     return Alert(
         id=str(row["id"]),
         rule_id=str(row["rule_id"]),
@@ -74,6 +75,7 @@ def _row_to_alert(row) -> Alert:
         acknowledged_at=row.get("acknowledged_at"),
         note=row.get("note"),
         event_snapshot=snapshot,
+        endpoint_id=str(endpoint_id) if endpoint_id else None,
     )
 
 
@@ -122,6 +124,7 @@ async def list_alerts(
     rule_id: Optional[str] = Query(default=None),
     from_time: Optional[datetime] = Query(default=None),
     to_time: Optional[datetime] = Query(default=None),
+    endpoint_id: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
@@ -152,6 +155,10 @@ async def list_alerts(
     if to_time is not None:
         conditions.append(f"a.matched_at <= ${idx}")
         params.append(to_time)
+        idx += 1
+    if endpoint_id is not None:
+        conditions.append(f"a.endpoint_id = ${idx}")
+        params.append(endpoint_id)
         idx += 1
 
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""

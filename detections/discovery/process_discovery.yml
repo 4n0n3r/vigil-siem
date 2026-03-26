@@ -1,0 +1,32 @@
+title: Process Discovery Enumeration
+id: e5f60718-9012-3456-ef01-456789012345
+status: stable
+description: >
+  Detects use of tasklist.exe or PowerShell Get-Process for process enumeration.
+  Attackers enumerate running processes to find AV/EDR software to evade,
+  identify injected processes, or locate target processes for injection.
+logsource:
+  product: windows
+  service: security
+detection:
+  sysmon_tasklist:
+    event_id: 1
+    event_data.Image|contains: "tasklist.exe"
+  sec_tasklist:
+    event_id: 4688
+    event_data.NewProcessName|contains: "tasklist.exe"
+  sysmon_ps_getprocess:
+    event_id: 1
+    event_data.Image|contains: "powershell"
+    event_data.CommandLine|contains:
+      - "Get-Process"
+      - "get-process"
+      # NOTE: "ps " removed — too broad, matches any parameter starting with 'ps' (e.g. PSModulePath)
+  condition: sysmon_tasklist or sec_tasklist or sysmon_ps_getprocess
+level: low
+tags:
+  - attack.discovery
+  - attack.t1057
+falsepositives:
+  - IT administrators and monitoring scripts
+  - Software installers checking for conflicting processes

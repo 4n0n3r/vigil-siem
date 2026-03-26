@@ -5,21 +5,38 @@ description: >
   Detects PowerShell processes launched with encoded command arguments
   (-enc, -EncodedCommand, -ec). This is a common technique used by
   malware and post-exploitation frameworks to obfuscate payloads.
+  Covers both Security Event 4688 (requires CommandLine audit policy)
+  and Sysmon Event 1 (ProcessCreate, always includes CommandLine).
 logsource:
   product: windows
   service: security
 detection:
-  selection:
+  # Security channel path (requires "Include command line in process creation events" GPO)
+  sec_process:
     event_id: 4688
-    event_data.NewProcessName|endswith: "powershell.exe"
-  encoded:
+    event_data.NewProcessName|contains: "powershell"
+  sec_encoded:
     event_data.CommandLine|contains:
       - " -enc "
       - " -EncodedCommand "
       - " -ec "
       - " /enc "
       - " /EncodedCommand "
-  condition: selection and encoded
+      # NOTE: " -e " removed — matches -ErrorAction, -ExecutionPolicy short forms, etc.
+      # Use -enc / -ec / -EncodedCommand which are unambiguous encoding flags.
+  # Sysmon path (always available when Sysmon is installed)
+  sysmon_process:
+    event_id: 1
+    event_data.Image|contains: "powershell"
+  sysmon_encoded:
+    event_data.CommandLine|contains:
+      - " -enc "
+      - " -EncodedCommand "
+      - " -ec "
+      - " /enc "
+      - " /EncodedCommand "
+      # NOTE: " -e " removed — too broad, see sec_encoded comment above
+  condition: (sec_process and sec_encoded) or (sysmon_process and sysmon_encoded)
 level: high
 tags:
   - attack.execution

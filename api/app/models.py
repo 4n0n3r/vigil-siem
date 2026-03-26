@@ -15,6 +15,7 @@ class ErrorResponse(BaseModel):
     error_code: str
     message: str
     detail: Any = None
+    hint: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ class StoredEvent(BaseModel):
     source: str
     event: dict[str, Any]
     timestamp: datetime
+    endpoint_id: str = ""
 
 
 class SearchEvent(BaseModel):
@@ -145,6 +147,7 @@ class Alert(BaseModel):
     acknowledged_at: datetime | None = None
     note: str | None = None
     event_snapshot: dict
+    endpoint_id: str | None = None
 
 
 class AlertListResponse(BaseModel):
@@ -180,3 +183,64 @@ class AlertBatchResponse(BaseModel):
     ids: list[str]
     action: str
     errors: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+class EndpointRegisterRequest(BaseModel):
+    name: str
+    hostname: str = ""
+    os: str = ""
+    metadata: dict[str, Any] = {}
+
+
+class EndpointRegisterResponse(BaseModel):
+    id: str
+    name: str
+    api_key: str  # returned ONCE — caller must save it
+    created_at: datetime
+
+
+class Endpoint(BaseModel):
+    id: str
+    name: str
+    hostname: str
+    os: str
+    last_seen: datetime | None = None
+    created_at: datetime
+    metadata: dict[str, Any]
+
+
+class EndpointListResponse(BaseModel):
+    endpoints: list[Endpoint]
+    total: int
+
+
+class EndpointHeartbeatResponse(BaseModel):
+    id: str
+    last_seen: datetime
+
+
+# ---------------------------------------------------------------------------
+# Hunt
+# ---------------------------------------------------------------------------
+
+class TimelineBucket(BaseModel):
+    ts: datetime
+    count: int
+
+
+class HuntAggBucket(BaseModel):
+    value: str
+    count: int
+
+
+class HuntResponse(BaseModel):
+    events: list[SearchEvent]
+    total: int
+    query_time_ms: int
+    aggregations: list[HuntAggBucket] = []
+    timeline: list[TimelineBucket] = []
+    query: str

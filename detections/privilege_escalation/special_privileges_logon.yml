@@ -1,0 +1,44 @@
+title: Special Privileges Assigned to New Logon
+id: b2c3d4e5-6789-0123-bcde-123456789012
+status: stable
+description: >
+  Detects Event 4672 — special (sensitive) privileges assigned when a new
+  logon session is created. This fires for administrator and service accounts.
+  In isolation it is low-signal, but combined with off-hours timestamps,
+  unusual source IPs, or accounts that rarely log on, it is high-fidelity.
+  Also useful for detecting service accounts being used interactively.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4672
+  # Exclude well-known noisy accounts observed in this environment.
+  # DWM-1/DWM-2: Desktop Window Manager virtual accounts — fire on every screen lock/unlock.
+  # defaultuser0: Windows built-in default user, fires during OOBE and provisioning.
+  # GUID-format names (e.g. 924080CE-1E23-...): Windows virtual service accounts (IIS, COM+).
+  # UMFD-*: User Mode Font Driver host accounts.
+  filter_system:
+    event_data.SubjectUserName:
+      - "SYSTEM"
+      - "LOCAL SERVICE"
+      - "NETWORK SERVICE"
+      - "DWM-1"
+      - "DWM-2"
+      - "DWM-3"
+      - "UMFD-0"
+      - "UMFD-1"
+      - "UMFD-2"
+      - "defaultuser0"
+  filter_virtual_accounts:
+    # Windows virtual accounts have GUID-format names — filter by length/pattern via endswith trick
+    event_data.SubjectUserName|re: "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+  condition: selection and not (filter_system or filter_virtual_accounts)
+level: low
+tags:
+  - attack.privilege_escalation
+  - attack.t1078
+  - attack.persistence
+falsepositives:
+  - Administrator accounts during routine interactive logon (expected, use for baselining)
+  - Service accounts that authenticate interactively (investigate if unexpected)

@@ -1,0 +1,52 @@
+title: Suspicious Script Interpreter Execution
+id: e4f50611-5678-9012-ef01-012345678901
+status: stable
+description: >
+  Detects wscript.exe, cscript.exe, and mshta.exe running scripts from
+  suspicious locations (TEMP, Downloads, AppData, ProgramData) or with
+  suspicious URL-based arguments. These interpreters are commonly abused
+  to execute malicious VBScript, JScript, and HTA payloads.
+logsource:
+  product: windows
+  service: security
+detection:
+  sysmon_wscript_suspicious:
+    event_id: 1
+    event_data.Image|contains:
+      - "wscript.exe"
+      - "cscript.exe"
+    event_data.CommandLine|contains:
+      - "\\Temp\\"
+      - "\\temp\\"
+      - "\\Downloads\\"
+      - "\\AppData\\"
+      - "\\ProgramData\\"
+      - "http://"
+      - "https://"
+  sysmon_mshta:
+    event_id: 1
+    event_data.Image|contains: "mshta.exe"
+    event_data.CommandLine|contains:
+      - "vbscript:"
+      - "javascript:"
+      - "http://"
+      - "https://"
+      - "\\Temp\\"
+      - "\\AppData\\"
+  sec_mshta:
+    event_id: 4688
+    event_data.NewProcessName|contains: "mshta.exe"
+    event_data.CommandLine|contains:
+      - "vbscript:"
+      - "javascript:"
+      - "http"
+  condition: sysmon_wscript_suspicious or sysmon_mshta or sec_mshta
+level: high
+tags:
+  - attack.execution
+  - attack.t1059.005
+  - attack.t1218.005
+  - attack.initial_access
+falsepositives:
+  - Legacy enterprise applications using HTA for UI
+  - IT scripts stored in AppData for user-context execution

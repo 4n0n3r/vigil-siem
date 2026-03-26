@@ -1,0 +1,38 @@
+title: Persistence via Registry Run Key
+id: e5f60182-3456-0123-def0-123456789012
+status: stable
+description: >
+  Detects modifications to autorun registry keys commonly used for persistence.
+  Covers Sysmon Event 13 (RegistryValueSet) which is the most reliable source,
+  and Security Event 4657 (registry value modified, requires Object Access auditing).
+  Run/RunOnce keys execute programs at logon.
+logsource:
+  product: windows
+  service: security
+detection:
+  # Sysmon Event 13: RegistryValueSet
+  sysmon_run_key:
+    event_id: 13
+    event_data.TargetObject|contains:
+      - "\\CurrentVersion\\Run\\"
+      - "\\CurrentVersion\\RunOnce\\"
+      - "\\CurrentVersion\\RunOnceEx\\"
+      - "\\CurrentVersion\\RunServices\\"
+      - "\\CurrentVersion\\RunServicesOnce\\"
+      - "\\Policies\\Explorer\\Run\\"
+      - "\\Windows\\CurrentVersion\\Run\\"
+  # Security Event 4657: Registry value modified (requires Object Access audit policy)
+  sec_run_key:
+    event_id: 4657
+    event_data.ObjectName|contains:
+      - "\\CurrentVersion\\Run"
+      - "\\Policies\\Explorer\\Run"
+  condition: sysmon_run_key or sec_run_key
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1547.001
+falsepositives:
+  - Software installers setting autostart entries
+  - IT management tools (PDQ Deploy, SCCM)
+  - Legitimate startup applications

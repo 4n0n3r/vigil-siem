@@ -1,0 +1,19 @@
+title: AWS Root Account Usage
+id: cloudtrail-root-account-usage
+status: stable
+description: Detects usage of the AWS root account, which should never be used for routine operations.
+author: Vigil
+date: 2026/03/24
+tags:
+  - attack.initial_access
+  - attack.t1078
+logsource:
+  category: cloud
+  product: aws
+detection:
+  selection:
+    user_identity_type: Root
+  condition: selection
+falsepositives:
+  - Initial account setup or emergency access
+level: critical

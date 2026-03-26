@@ -1,0 +1,34 @@
+title: Suspicious Outbound Network Connection from Script Host
+id: c8d9e0f1-9012-3456-cdef-456789012345
+status: stable
+description: >
+  Detects Sysmon Event 3 (NetworkConnect) from process images that should not
+  be making outbound connections: PowerShell, wscript, cscript, mshta, and
+  regsvr32. Outbound connections from these processes indicate an active C2
+  channel, staged download, or data exfiltration.
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  sysmon_scripting_net:
+    event_id: 3
+    event_data.Initiated: "true"
+    event_data.Image|contains:
+      - "powershell.exe"
+      - "wscript.exe"
+      - "cscript.exe"
+      - "mshta.exe"
+      - "regsvr32.exe"
+      - "certutil.exe"
+      - "bitsadmin.exe"
+  condition: sysmon_scripting_net
+level: high
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+  - attack.t1105
+  - attack.exfiltration
+falsepositives:
+  - PowerShell-based monitoring agents making legitimate API calls
+  - Software update mechanisms using PowerShell
+  - IT automation downloading packages via PowerShell (chocolatey, winget wrappers)

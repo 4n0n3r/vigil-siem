@@ -1,0 +1,25 @@
+title: NTLM Credential Validation Failure
+id: a0b1c2d3-1234-5678-abcd-678901234567
+status: stable
+description: >
+  Detects Event 4776 (NTLM credential validation) where the result code
+  indicates failure. Unlike 4625 (logon failure at the target), 4776 fires
+  on the domain controller validating credentials. A burst of 4776 failures
+  against multiple accounts indicates password spray from a single source.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4776
+  filter_success:
+    event_data.Status: "0x0"
+  condition: selection and not filter_success
+level: medium
+tags:
+  - attack.credential_access
+  - attack.t1110
+  - attack.t1110.003
+falsepositives:
+  - Users with cached credentials after password change
+  - Services using old NTLM credentials

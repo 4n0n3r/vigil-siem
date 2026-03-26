@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -98,6 +99,23 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 		addr := fmt.Sprintf(":%d", webPort)
 		webURL := fmt.Sprintf("http://localhost%s", addr)
 
+		// Listen first so we can detect port conflicts before printing the
+		// "running" message.
+		listener, listenErr := net.Listen("tcp", addr)
+		if listenErr != nil {
+			if isPortInUse(listenErr) {
+				output.PrintErrorWithHint(
+					"PORT_IN_USE",
+					fmt.Sprintf("port %d is already in use", webPort),
+					listenErr.Error(),
+					fmt.Sprintf("try: vigil web start --port %d", webPort+1),
+				)
+				return nil
+			}
+			output.PrintError("WEB_START_ERROR", "failed to start web server", listenErr.Error())
+			return nil
+		}
+
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type startMsg struct {
@@ -112,8 +130,15 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 			fmt.Println("Press Ctrl+C to stop.")
 		}
 
-		return http.ListenAndServe(addr, mux)
+		return http.Serve(listener, mux)
 	},
+}
+
+// isPortInUse returns true when the error is an "address already in use" error
+// (covers both POSIX EADDRINUSE and Windows WSAEADDRINUSE).
+func isPortInUse(err error) bool {
+	return strings.Contains(err.Error(), "address already in use") ||
+		strings.Contains(err.Error(), "Only one usage of each socket address")
 }
 
 func init() {

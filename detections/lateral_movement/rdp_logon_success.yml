@@ -1,0 +1,27 @@
+title: Successful RDP Logon (Remote Interactive)
+id: b1c2d3e4-2345-6789-bcde-789012345678
+status: stable
+description: >
+  Detects successful RDP logon sessions via Event 4624 with LogonType 10
+  (RemoteInteractive). While RDP access is often legitimate, this event
+  provides a baseline for off-hours logins, first-time source IPs, and
+  accounts that do not normally use RDP. Correlate with 4625 failures
+  for evidence of brute force prior to success.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4624
+    event_data.LogonType: "10"
+  filter_system:
+    event_data.SubjectUserName|endswith: "$"
+  condition: selection and not filter_system
+level: low
+tags:
+  - attack.lateral_movement
+  - attack.t1021.001
+  - attack.initial_access
+falsepositives:
+  - Authorized RDP sessions by administrators and remote workers
+  - IT support accessing machines remotely

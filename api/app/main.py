@@ -1,22 +1,31 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
 load_dotenv()  # Load .env before anything else reads os.environ
 
+# Configure log level from env (default: info). Must run before any logger is used.
+logging.basicConfig(
+    level=getattr(logging, os.environ.get("VIGIL_LOG_LEVEL", "info").upper(), logging.INFO)
+)
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 
 from app.models import ErrorResponse
 from app.routes import events, status
 from app.routes import detections as detections_router_module
 from app.routes import alerts as alerts_router_module
-from app.db import clickhouse, postgres
+from app.routes import hunt as hunt_router_module
+from app.routes import endpoints as endpoints_router_module
+from app.db import clickhouse, postgres, pg_endpoints
 from app.sigma import loader
 
 logger = logging.getLogger(__name__)
@@ -48,13 +57,51 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Vigil API",
-    description="CLI-first SIEM backend — Phase 2",
-    version="0.2.0",
+    description="CLI-first SIEM backend — Phase 5",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
+# Auth middleware
+# ---------------------------------------------------------------------------
+
+REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
+
+# Paths that are always public regardless of auth mode.
+_PUBLIC_PATHS = {"/v1/status", "/v1/endpoints/register"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Always try to resolve the key so endpoint_id is set even when auth
+        # is not enforced. This is what makes heartbeat / last_seen work when
+        # VIGIL_REQUIRE_AUTH=false.
+        key = request.headers.get("X-Vigil-Key", "")
+        endpoint = await pg_endpoints.validate_api_key(key) if key else None
+
+        if REQUIRE_AUTH and request.url.path not in _PUBLIC_PATHS:
+            if endpoint is None:
+                status_code = 401 if not key else 403
+                error_code = "UNAUTHORIZED" if not key else "FORBIDDEN"
+                message = "Missing API key." if not key else "Invalid API key."
+                body = ErrorResponse(
+                    error_code=error_code,
+                    message=message,
+                    detail=None,
+                    hint="register an endpoint with 'vigil agent register' and set the returned api_key",
+                )
+                return JSONResponse(status_code=status_code, content=body.model_dump())
+
+        request.state.endpoint_id = str(endpoint["id"]) if endpoint else None
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
+
+# ---------------------------------------------------------------------------
 # CORS — allow all origins for local dev (tighten in production)
+# Note: CORSMiddleware added last runs first (middleware stack is LIFO)
 # ---------------------------------------------------------------------------
 
 app.add_middleware(
@@ -122,3 +169,5 @@ app.include_router(events.router, prefix="/v1")
 app.include_router(status.router, prefix="/v1")
 app.include_router(detections_router_module.router, prefix="/v1")
 app.include_router(alerts_router_module.router, prefix="/v1")
+app.include_router(hunt_router_module.router, prefix="/v1")
+app.include_router(endpoints_router_module.router, prefix="/v1")

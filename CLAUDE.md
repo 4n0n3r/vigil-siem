@@ -51,6 +51,23 @@ This is non-negotiable — AI agents depend on it.
 - 10 Sigma detection rules across 6 MITRE tactics
 - `vigil alerts visualize` — self-contained HTML dashboard
 
+**Phase 5 — complete.**
+- `LICENSE` (Apache 2.0), `README.md`, `CONTRIBUTING.md`
+- `vigil config get/set` — persistent config file (`~/.config/vigil/config.yaml`)
+- Config file resolution: flag > env > config > default
+- `vigil doctor` — 5-check connectivity + config diagnostic
+- `vigil web start` PORT_IN_USE error with hint
+- Error hints: `hint` field on all `ErrorResponse` and `APIError`
+- Multi-endpoint backend: `endpoints` table, per-key auth cache
+- `VIGIL_REQUIRE_AUTH` env var for optional auth enforcement
+- `vigil agent register` — register endpoint, save api_key + endpoint_id to config
+- `vigil endpoints list/get`
+- `--endpoint <id>` filter on `vigil search` and `vigil hunt`
+- `endpoint_id` column in ClickHouse `vigil_events`
+- `endpoint_id` FK on `alerts` table (migration 004)
+- Skill files: `skills/triage.md`, `skills/investigate.md`, `skills/detect.md`, `skills/forensic.md`
+- Docs: `docs/installation.md`, `docs/configuration.md`, `docs/multi-endpoint.md`, `docs/detections.md`, `docs/api-reference.md`
+
 ## Stack decisions (do not change without asking)
 - CLI: Go + Cobra
 - API: Python 3.12 + FastAPI + Pydantic v2
@@ -86,10 +103,44 @@ vigil agent uninstall               # remove the service
 
 ## Environment variables
 ```
-VIGIL_API_URL      Base URL of the Vigil API (default: http://localhost:8001)
-CLICKHOUSE_DSN     ClickHouse Cloud connection string (Phase 2)
-POSTGRES_DSN       PostgreSQL connection string (Phase 2)
+VIGIL_API_URL        Base URL of the Vigil API (default: http://localhost:8001)
+VIGIL_API_KEY        API key for authenticated deployments (CLI/agent)
+VIGIL_REQUIRE_AUTH   Set "true" to require X-Vigil-Key on all API endpoints (default: false)
+CLICKHOUSE_DSN       ClickHouse Cloud connection string (Phase 2)
+POSTGRES_DSN         PostgreSQL connection string (Phase 2)
 ```
+
+## Config file (Phase 5)
+
+The CLI stores persistent settings at:
+- Windows: `%APPDATA%\vigil\config.yaml`
+- Linux/macOS: `~/.config/vigil/config.yaml`
+
+Resolution order (highest to lowest priority):
+1. CLI flag (`--api-url`)
+2. Environment variable (`VIGIL_API_URL`, `VIGIL_API_KEY`)
+3. Config file value
+4. Built-in default
+
+Manage with: `vigil config get [key]` and `vigil config set <key> <value>`.
+
+Valid keys: `api_url`, `api_key`, `endpoint_id`, `endpoint_name`.
+
+## Error codes (Phase 5 additions)
+
+| Code | Meaning |
+|---|---|
+| `CONFIG_LOAD_ERROR` | Failed to read or parse the config file |
+| `CONFIG_SAVE_ERROR` | Failed to write the config file |
+| `CONFIG_UNKNOWN_KEY` | Key not in the valid set |
+| `PORT_IN_USE` | Requested port is already bound by another process |
+| `WEB_START_ERROR` | Failed to start the web server (non-port error) |
+| `UNAUTHORIZED` | Missing `X-Vigil-Key` header (auth enabled) |
+| `FORBIDDEN` | Invalid or unknown `X-Vigil-Key` (auth enabled) |
+| `REGISTER_ERROR` | Endpoint registration failed (DB error) |
+
+All `ErrorResponse` objects now include an optional `hint` field with actionable
+remediation text. CLI's `PrintErrorWithHint` propagates this to stderr.
 
 ---
 

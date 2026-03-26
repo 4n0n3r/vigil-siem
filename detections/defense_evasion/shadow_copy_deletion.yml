@@ -1,0 +1,46 @@
+title: Shadow Copy Deletion
+id: d4e5f601-8234-9012-cdef-012345678901
+status: stable
+description: >
+  Detects deletion of Windows Volume Shadow Copies via vssadmin or wmic.
+  This is a hallmark of ransomware and destructive malware — attackers
+  delete shadow copies to prevent victims from restoring files without
+  paying a ransom. Treat every hit as critical.
+logsource:
+  product: windows
+  service: security
+detection:
+  sec_vssadmin:
+    event_id: 4688
+    event_data.NewProcessName|contains: "vssadmin"
+    event_data.CommandLine|contains:
+      - "delete shadows"
+      - "Delete Shadows"
+  sec_wmic:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "shadowcopy delete"
+      - "shadowcopy where"
+  sec_powershell_vss:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "Win32_ShadowCopy"
+  sysmon_vssadmin:
+    event_id: 1
+    event_data.Image|contains: "vssadmin"
+    event_data.CommandLine|contains:
+      - "delete shadows"
+      - "Delete Shadows"
+  sysmon_wmic:
+    event_id: 1
+    event_data.CommandLine|contains:
+      - "shadowcopy delete"
+      - "Win32_ShadowCopy"
+  condition: sec_vssadmin or sec_wmic or sec_powershell_vss or sysmon_vssadmin or sysmon_wmic
+level: critical
+tags:
+  - attack.impact
+  - attack.t1490
+  - attack.defense_evasion
+falsepositives:
+  - Backup software reclaiming disk space (rare, verify with backup team)

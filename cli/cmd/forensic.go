@@ -19,16 +19,26 @@ var forensicCmd = &cobra.Command{
 	Long: `Collect forensic artifacts from the local endpoint and ingest them into the SIEM.
 
 Unlike 'vigil agent' which streams events continuously, 'vigil forensic collect'
-performs a one-shot sweep of static artifacts:
+performs a one-shot sweep of static artifacts.
 
+Windows artifacts (requires Administrator):
   - Prefetch file metadata (C:\Windows\Prefetch)
   - Registry Run keys (HKLM + HKCU autorun entries)
   - Windows Services (via SCM)
   - Scheduled Tasks (via registry TaskCache)
   - Shimcache / AppCompatCache (raw bytes, hex-encoded)
 
-Results are ingested as events with source prefix "forensic:".
-Run as administrator for complete coverage.`,
+Linux artifacts (root recommended for full coverage):
+  - Cron jobs (/etc/cron.d, /etc/crontab, user crontabs)
+  - Systemd services (enabled units via systemctl)
+  - SUID binaries (find / -perm /4000)
+  - SSH authorized_keys for all users
+  - User accounts (/etc/passwd)
+  - Listening network services (ss -tlnp)
+  - Bash history (last 200 lines per user)
+  - Installed packages (dpkg or rpm)
+
+Results are ingested as events with source prefix "forensic:".`,
 }
 
 // ----------------------------------------------------------------------------
@@ -56,7 +66,7 @@ var forensicCollectCmd = &cobra.Command{
 
 		if len(events) == 0 {
 			output.PrintError("FORENSIC_NO_DATA",
-				"no forensic artifacts collected — run as administrator for full coverage", "")
+				"no forensic artifacts collected — run as administrator/root for full coverage", "")
 			return nil
 		}
 
@@ -97,14 +107,29 @@ var forensicCollectCmd = &cobra.Command{
 			return nil
 		}
 
-		// Table output.
+		// Table output — show all source types found.
 		t := output.NewTable([]string{"Artifact Type", "Count"})
+		// Windows artifact types
 		for _, src := range []string{
 			"forensic:prefetch",
 			"forensic:registry",
 			"forensic:services",
 			"forensic:tasks",
 			"forensic:shimcache",
+		} {
+			if c, ok := counts[src]; ok {
+				t.Append([]string{src, fmt.Sprintf("%d", c)})
+			}
+		}
+		// Linux artifact types
+		for _, src := range []string{
+			"forensic:cron",
+			"forensic:suid",
+			"forensic:ssh_keys",
+			"forensic:users",
+			"forensic:network",
+			"forensic:bash_history",
+			"forensic:packages",
 		} {
 			if c, ok := counts[src]; ok {
 				t.Append([]string{src, fmt.Sprintf("%d", c)})

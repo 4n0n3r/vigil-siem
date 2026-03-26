@@ -9,10 +9,11 @@ import (
 )
 
 var (
-	searchQuery string
-	searchFrom  string
-	searchTo    string
-	searchLimit int
+	searchQuery      string
+	searchFrom       string
+	searchTo         string
+	searchLimit      int
+	searchEndpointID string
 )
 
 // searchEvent is a single event in the search response.
@@ -45,10 +46,11 @@ Examples:
   vigil search --output json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		params := map[string]string{
-			"query":     searchQuery,
-			"from_time": searchFrom,
-			"to_time":   searchTo,
-			"limit":     strconv.Itoa(searchLimit),
+			"query":       searchQuery,
+			"from_time":   searchFrom,
+			"to_time":     searchTo,
+			"limit":       strconv.Itoa(searchLimit),
+			"endpoint_id": searchEndpointID,
 		}
 
 		var resp searchResponse
@@ -84,4 +86,5 @@ func init() {
 	searchCmd.Flags().StringVar(&searchFrom, "from", "", "Start time in RFC3339 format")
 	searchCmd.Flags().StringVar(&searchTo, "to", "", "End time in RFC3339 format")
 	searchCmd.Flags().IntVar(&searchLimit, "limit", 100, "Maximum number of events to return")
+	searchCmd.Flags().StringVar(&searchEndpointID, "endpoint", "", "Filter by endpoint ID")
 }

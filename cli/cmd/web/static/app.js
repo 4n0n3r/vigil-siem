@@ -5,10 +5,20 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// API client
+// API client + short-lived GET cache
 // ---------------------------------------------------------------------------
 
+const _cache = new Map(); // path → {data, ts}
+const CACHE_TTL = 20_000; // 20 seconds
+
 async function api(path, opts = {}) {
+  const isGet = !opts.method || opts.method === 'GET';
+
+  if (isGet) {
+    const hit = _cache.get(path);
+    if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.data;
+  }
+
   const resp = await fetch('/api' + path, {
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     ...opts,
@@ -18,7 +28,17 @@ async function api(path, opts = {}) {
     try { const e = await resp.json(); msg = e.message || e.error_code || msg; } catch (_) {}
     throw new Error(msg);
   }
-  return resp.json();
+  const data = await resp.json();
+  if (isGet) _cache.set(path, { data, ts: Date.now() });
+  return data;
+}
+
+// Invalidate cached entries whose path contains the given prefix.
+// Call after any mutation so the next read is fresh.
+function invalidateCache(prefix) {
+  for (const key of _cache.keys()) {
+    if (!prefix || key.startsWith(prefix)) _cache.delete(key);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +72,9 @@ function route() {
   if (alertMatch) return renderAlertDetail(alertMatch[1]);
   if (hash.startsWith('/alerts')) return renderAlerts();
   if (hash.startsWith('/detections')) return renderDetections();
+  const agentMatch = hash.match(/^\/agents\/(.+)$/);
+  if (agentMatch) return renderAgentDetail(agentMatch[1]);
+  if (hash.startsWith('/agents')) return renderAgents();
   app.innerHTML = '<div class="empty">Page not found.</div>';
 }
 
@@ -87,17 +110,21 @@ async function renderDashboard() {
   dashCharts = [];
 
   try {
-    const [status, alertsResp] = await Promise.all([
+    const [status, alertsResp, endpointsResp] = await Promise.all([
       api('/v1/status'),
       api('/v1/alerts?limit=500&status=open'),
+      api('/v1/endpoints?limit=500').catch(() => ({ endpoints: [], total: 0 })),
     ]);
     const alerts = alertsResp.alerts || [];
+    const endpoints = endpointsResp.endpoints || [];
+    const now = Date.now();
+    const onlineCount = endpoints.filter(ep =>
+      ep.last_seen && (now - new Date(ep.last_seen).getTime()) < 5 * 60 * 1000
+    ).length;
 
-    // Severity counts.
     const counts = { critical: 0, high: 0, medium: 0, low: 0 };
     alerts.forEach(a => { counts[a.severity] = (counts[a.severity] || 0) + 1; });
 
-    // Timeline — last 7 days.
     const dayMap = {};
     const labels = [];
     for (let i = 6; i >= 0; i--) {
@@ -106,14 +133,8 @@ async function renderDashboard() {
       labels.push(key.slice(5));
       dayMap[key] = 0;
     }
-    alerts.forEach(a => {
-      const day = (a.matched_at || '').slice(0, 10);
-      if (day in dayMap) dayMap[day]++;
-    });
-    const timelineData = labels.map((_, i) => {
-      const key = Object.keys(dayMap)[i];
-      return dayMap[key] || 0;
-    });
+    alerts.forEach(a => { const day = (a.matched_at || '').slice(0, 10); if (day in dayMap) dayMap[day]++; });
+    const timelineData = labels.map((_, i) => dayMap[Object.keys(dayMap)[i]] || 0);
 
     app.innerHTML = `
       <div class="page-header">
@@ -125,6 +146,10 @@ async function renderDashboard() {
         <div class="stat-card"><div class="stat-label">High</div><div class="stat-value c-high">${counts.high}</div></div>
         <div class="stat-card"><div class="stat-label">Medium</div><div class="stat-value c-medium">${counts.medium}</div></div>
         <div class="stat-card"><div class="stat-label">Low</div><div class="stat-value c-low">${counts.low}</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="location.hash='#/agents'">
+          <div class="stat-label">Agents Online</div>
+          <div class="stat-value" style="color:var(--accent)">${onlineCount} <span style="font-size:0.5em;color:var(--text-dim)">/ ${endpoints.length}</span></div>
+        </div>
       </div>
       <div class="charts-row">
         <div class="card"><div class="card-title">Severity Breakdown</div><canvas id="donut-chart"></canvas></div>
@@ -137,41 +162,22 @@ async function renderDashboard() {
 
     const donut = new Chart(document.getElementById('donut-chart'), {
       type: 'doughnut',
-      data: {
-        labels: ['Critical', 'High', 'Medium', 'Low'],
-        datasets: [{
-          data: [counts.critical, counts.high, counts.medium, counts.low],
-          backgroundColor: ['#ff4757', '#ff6b35', '#ffa502', '#2ed573'],
-          borderWidth: 0,
-        }],
-      },
+      data: { labels: ['Critical', 'High', 'Medium', 'Low'], datasets: [{ data: [counts.critical, counts.high, counts.medium, counts.low], backgroundColor: ['#F85149', '#FFB547', '#F0C929', '#3FB950'], borderWidth: 0 }] },
       options: { plugins: { legend: { labels: { color: '#e2e8f0', font: { size: 12 } } } }, cutout: '65%' },
     });
     const timeline = new Chart(document.getElementById('timeline-chart'), {
       type: 'line',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Alerts',
-          data: timelineData,
-          borderColor: '#00d4ff',
-          backgroundColor: 'rgba(0,212,255,0.08)',
-          tension: 0.4,
-          fill: true,
-          pointBackgroundColor: '#00d4ff',
-        }],
-      },
+      data: { labels, datasets: [{ label: 'Alerts', data: timelineData, borderColor: '#00E5FF', backgroundColor: 'rgba(0,229,255,0.08)', tension: 0.4, fill: true, pointBackgroundColor: '#00E5FF' }] },
       options: {
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { color: '#64748b' }, grid: { color: '#1e2d4a' } },
-          y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#1e2d4a' }, beginAtZero: true },
+          x: { ticks: { color: '#64748b' }, grid: { color: '#1E2633' } },
+          y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#1E2633' }, beginAtZero: true },
         },
       },
     });
     dashCharts = [donut, timeline];
 
-    // Row click → alert detail.
     app.querySelectorAll('tr[data-id]').forEach(tr => {
       tr.addEventListener('click', () => { location.hash = '#/alerts/' + tr.dataset.id; });
     });
@@ -216,14 +222,10 @@ async function renderAlerts() {
         ${renderAlertTable(alerts, true)}
       </div>`;
 
-    // Filter controls.
     document.getElementById('flt-status').addEventListener('change', applyAlertFilters);
     document.getElementById('flt-severity').addEventListener('change', applyAlertFilters);
-
-    // Batch action buttons.
     document.getElementById('btn-batch-ack').addEventListener('click', () => batchAction('acknowledge'));
     document.getElementById('btn-batch-resolve').addEventListener('click', () => batchAction('resolve'));
-
     wireAlertTable(alerts);
   } catch (e) { app.innerHTML = `<div class="empty">Error loading alerts: ${e.message}</div>`; }
 }
@@ -244,6 +246,7 @@ async function batchAction(action) {
       method: 'POST',
       body: JSON.stringify({ action, ids: [...selectedIds] }),
     });
+    invalidateCache('/v1/alerts');
     toast(`${resp.updated} alert(s) ${action}d`);
     location.hash = '#/alerts';
     renderAlerts();
@@ -314,14 +317,8 @@ async function renderAlertDetail(id) {
   try {
     const alert = await api('/v1/alerts/' + id);
     const host = (alert.event_snapshot || {}).computer || '';
-    let relatedEvents = [];
-    if (host) {
-      try {
-        const r = await api('/v1/events/search?query=' + encodeURIComponent(host) + '&limit=20');
-        relatedEvents = r.events || [];
-      } catch (_) {}
-    }
 
+    // Render the page immediately — don't wait for related events.
     app.innerHTML = `
       <div class="page-header">
         <a href="#/alerts" class="back-btn">← Back to Alerts</a>
@@ -350,17 +347,27 @@ async function renderAlertDetail(id) {
         </div>
       </div>
       <div class="card">
-        <div class="card-title">Entity Graph — ${esc(host || 'no host')} · ${relatedEvents.length} related events</div>
-        <div id="force-graph"></div>
+        <div class="card-title" id="graph-title">Entity Graph — ${esc(host || 'no host')} · loading…</div>
+        <div id="force-graph"><div class="loading" style="padding:24px">Loading related events…</div></div>
         <div id="graph-tooltip" class="graph-tooltip" style="display:none"></div>
       </div>`;
 
-    // Action buttons.
     document.getElementById('btn-ack').addEventListener('click', () => alertAction(id, 'acknowledge'));
     document.getElementById('btn-sup').addEventListener('click', () => alertAction(id, 'suppress'));
     document.getElementById('btn-resolve').addEventListener('click', () => alertAction(id, 'resolve'));
 
-    renderForceGraph(alert, relatedEvents);
+    // Fetch related events in the background and update the graph when ready.
+    let relatedEvents = [];
+    if (host) {
+      try {
+        const r = await api('/v1/events/search?query=' + encodeURIComponent(host) + '&limit=10');
+        relatedEvents = r.events || [];
+      } catch (_) {}
+    }
+    const graphTitle = document.getElementById('graph-title');
+    const graphEl = document.getElementById('force-graph');
+    if (graphTitle) graphTitle.textContent = `Entity Graph — ${host || 'no host'} · ${relatedEvents.length} related events`;
+    if (graphEl) { graphEl.innerHTML = ''; renderForceGraph(alert, relatedEvents); }
   } catch (e) { app.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
 }
 
@@ -375,6 +382,7 @@ async function alertAction(id, action) {
         method: 'POST', body: JSON.stringify({ action, ids: [id] }),
       });
     }
+    invalidateCache('/v1/alerts');
     toast(`Alert ${action}d`);
     renderAlertDetail(id);
   } catch (e) { toast(e.message, true); }
@@ -445,7 +453,7 @@ function renderForceGraph(alert, relatedEvents) {
   const nodeGroup  = svg.append('g').attr('class', 'nodes');
 
   const linkSel = linkGroup.selectAll('line').data(links).join('line')
-    .attr('stroke', '#1e2d4a').attr('stroke-width', 1.5);
+    .attr('stroke', '#1E2633').attr('stroke-width', 1.5);
 
   const labelSel = labelGroup.selectAll('text').data(links).join('text')
     .attr('fill', '#64748b').attr('font-size', 9).attr('text-anchor', 'middle')
@@ -500,6 +508,113 @@ function renderForceGraph(alert, relatedEvents) {
 }
 
 // ---------------------------------------------------------------------------
+// Agents (Endpoints)
+// ---------------------------------------------------------------------------
+
+function agentStatus(ep) {
+  if (!ep.last_seen) return { label: 'Never seen', cls: 'badge-suppressed' };
+  const age = Date.now() - new Date(ep.last_seen).getTime();
+  if (age < 5 * 60 * 1000)  return { label: 'Online',   cls: 'badge-low' };
+  if (age < 24 * 60 * 60 * 1000) return { label: 'Idle', cls: 'badge-medium' };
+  return { label: 'Offline', cls: 'badge-critical' };
+}
+
+async function renderAgents() {
+  app.innerHTML = '<div class="loading">Loading agents…</div>';
+  try {
+    const data = await api('/v1/endpoints?limit=500');
+    const endpoints = data.endpoints || [];
+    const now = Date.now();
+    const onlineCount = endpoints.filter(ep =>
+      ep.last_seen && (now - new Date(ep.last_seen).getTime()) < 5 * 60 * 1000
+    ).length;
+
+    app.innerHTML = `
+      <div class="page-header">
+        <span class="page-title">Agents</span>
+        <span class="page-sub">${onlineCount} online · ${data.total} registered</span>
+      </div>
+      <div class="card table-wrap">
+        ${endpoints.length === 0
+          ? '<div class="empty">No agents registered yet.<br><br>Run <code class="mono">vigil agent register --name MY-HOST</code> on an endpoint to connect it.</div>'
+          : `<table>
+              <thead><tr><th>Status</th><th>Name</th><th>Hostname</th><th>OS</th><th>Last Seen</th><th>Registered</th><th>ID</th></tr></thead>
+              <tbody>
+                ${endpoints.map(ep => {
+                  const st = agentStatus(ep);
+                  return `<tr data-id="${ep.id}" style="cursor:pointer">
+                    <td><span class="badge ${st.cls}">${st.label}</span></td>
+                    <td>${esc(ep.name)}</td>
+                    <td class="mono">${esc(ep.hostname || '—')}</td>
+                    <td>${esc(ep.os || '—')}</td>
+                    <td class="mono">${fmtTime(ep.last_seen)}</td>
+                    <td class="mono">${fmtTime(ep.created_at)}</td>
+                    <td class="mono">${ep.id.slice(0, 8)}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>`}
+      </div>`;
+
+    app.querySelectorAll('tr[data-id]').forEach(tr => {
+      tr.addEventListener('click', () => { location.hash = '#/agents/' + tr.dataset.id; });
+    });
+  } catch (e) { app.innerHTML = `<div class="empty">Error loading agents: ${e.message}</div>`; }
+}
+
+async function renderAgentDetail(id) {
+  app.innerHTML = '<div class="loading">Loading agent…</div>';
+  try {
+    const [ep, alertsResp, eventsResp] = await Promise.all([
+      api('/v1/endpoints/' + id),
+      api('/v1/alerts?endpoint_id=' + encodeURIComponent(id) + '&limit=20').catch(() => ({ alerts: [], total: 0 })),
+      api('/v1/events/search?endpoint_id=' + encodeURIComponent(id) + '&limit=5').catch(() => ({ events: [], total: 0 })),
+    ]);
+
+    const st = agentStatus(ep);
+    const alerts = alertsResp.alerts || [];
+    const events = eventsResp.events || [];
+
+    app.innerHTML = `
+      <div class="page-header">
+        <a href="#/agents" class="back-btn">← Back to Agents</a>
+        <span class="page-title">${esc(ep.name)}</span>
+        <span class="badge ${st.cls} ml-auto">${st.label}</span>
+      </div>
+      <div class="detail-grid">
+        <div class="card">
+          <div class="card-title">Agent Details</div>
+          ${field('ID', ep.id)}
+          ${field('Name', ep.name)}
+          ${field('Hostname', ep.hostname || '—')}
+          ${field('OS', ep.os || '—')}
+          ${field('Last Seen', fmtTime(ep.last_seen))}
+          ${field('Registered', fmtTime(ep.created_at))}
+          ${Object.entries(ep.metadata || {}).map(([k, v]) => field(k, String(v))).join('')}
+        </div>
+        <div class="card">
+          <div class="card-title">Recent Alerts <span class="page-sub">(from this endpoint)</span></div>
+          ${alerts.length === 0
+            ? '<div class="empty" style="padding:16px">No alerts from this endpoint.</div>'
+            : renderAlertTable(alerts, false)}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recent Events <span class="page-sub">(last 5)</span></div>
+        ${events.length === 0
+          ? '<div class="empty" style="padding:16px">No events recorded for this endpoint.</div>'
+          : `<div class="code-block" style="max-height:320px;overflow-y:auto">${events.map(ev =>
+              esc(fmtTime(ev.timestamp) + '  [' + ev.source + ']\n' + JSON.stringify(ev.event, null, 2))
+            ).join('\n\n')}</div>`}
+      </div>`;
+
+    app.querySelectorAll('tr[data-id]').forEach(tr => {
+      tr.addEventListener('click', () => { location.hash = '#/alerts/' + tr.dataset.id; });
+    });
+  } catch (e) { app.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+// ---------------------------------------------------------------------------
 // Detections
 // ---------------------------------------------------------------------------
 
@@ -516,9 +631,7 @@ async function renderDetections() {
       </div>
       <div class="card table-wrap">
         <table>
-          <thead><tr>
-            <th>Name</th><th>Severity</th><th>MITRE Tactic</th><th>Enabled</th><th>Updated</th>
-          </tr></thead>
+          <thead><tr><th>Name</th><th>Severity</th><th>MITRE Tactic</th><th>Enabled</th><th>Updated</th></tr></thead>
           <tbody>
             ${rules.map(r => `
             <tr data-id="${r.id}">
@@ -537,17 +650,17 @@ async function renderDetections() {
         </table>
       </div>`;
 
-    // Toggle enable/disable.
     app.querySelectorAll('.rule-toggle').forEach(cb => {
       cb.addEventListener('change', async (e) => {
         const id = e.target.dataset.id;
-        const action = e.target.checked ? 'enable' : 'disable';
+        const enabled = e.target.checked;
         try {
-          await api('/v1/detections/' + id + '/' + action, { method: 'POST', body: '{}' });
-          toast(`Rule ${action}d`);
+          await api('/v1/detections/' + id, { method: 'PATCH', body: JSON.stringify({ enabled }) });
+          invalidateCache('/v1/detections');
+          toast(`Rule ${enabled ? 'enabled' : 'disabled'}`);
         } catch (err) {
           toast(err.message, true);
-          e.target.checked = !e.target.checked; // revert
+          e.target.checked = !e.target.checked;
         }
       });
     });

@@ -3,13 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vigil SIEM</title>
+<title>Vigil — Security Dashboard</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <nav class="nav">
-  <span class="nav-logo">▶ VIGIL</span>
+  <a href="#/" class="nav-logo" style="text-decoration:none">
+    <svg class="nav-logo-eye" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 20 C10 8, 30 8, 36 20" stroke="#E2E8F0" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <circle cx="20" cy="20" r="5" fill="#00E5FF" style="filter:drop-shadow(0 0 5px #00E5FF)"/>
+      <circle cx="20" cy="20" r="2" fill="#080B10"/>
+    </svg>
+    vigil
+  </a>
   <a href="#/" class="nav-link" data-route="/">Dashboard</a>
+  <a href="#/agents" class="nav-link" data-route="/agents">Agents</a>
   <a href="#/alerts" class="nav-link" data-route="/alerts">Alerts</a>
   <a href="#/detections" class="nav-link" data-route="/detections">Detections</a>
   <span class="nav-status" id="nav-status"></span>
