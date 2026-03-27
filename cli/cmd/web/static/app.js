@@ -33,6 +33,16 @@ async function api(path, opts = {}) {
   return data;
 }
 
+async function apiDelete(path) {
+  const resp = await fetch('/api' + path, { method: 'DELETE' });
+  if (!resp.ok && resp.status !== 204) {
+    let msg = resp.statusText;
+    try { const e = await resp.json(); msg = e.message || e.error_code || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  invalidateCache();
+}
+
 // Invalidate cached entries whose path contains the given prefix.
 // Call after any mutation so the next read is fresh.
 function invalidateCache(prefix) {
@@ -579,7 +589,8 @@ async function renderAgentDetail(id) {
       <div class="page-header">
         <a href="#/agents" class="back-btn">← Back to Agents</a>
         <span class="page-title">${esc(ep.name)}</span>
-        <span class="badge ${st.cls} ml-auto">${st.label}</span>
+        <span class="badge ${st.cls}">${st.label}</span>
+        <button class="btn btn-danger ml-auto" id="btn-delete-endpoint">Delete Agent</button>
       </div>
       <div class="detail-grid">
         <div class="card">
@@ -611,7 +622,53 @@ async function renderAgentDetail(id) {
     app.querySelectorAll('tr[data-id]').forEach(tr => {
       tr.addEventListener('click', () => { location.hash = '#/alerts/' + tr.dataset.id; });
     });
+
+    document.getElementById('btn-delete-endpoint')
+      .addEventListener('click', () => confirmDeleteEndpoint(ep.id, ep.name));
+
   } catch (e) { app.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint delete with confirmation modal
+// ---------------------------------------------------------------------------
+
+function confirmDeleteEndpoint(id, name) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-title">Delete Agent</div>
+      <div class="modal-body">
+        Are you sure you want to delete <strong>${esc(name)}</strong>?<br><br>
+        This will revoke the agent's API key immediately. The device will
+        stop sending events and must be re-registered to reconnect.
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="modal-cancel">Cancel</button>
+        <button class="btn btn-danger" id="modal-confirm">Delete</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#modal-cancel').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('#modal-confirm').addEventListener('click', async () => {
+    const confirmBtn = overlay.querySelector('#modal-confirm');
+    confirmBtn.textContent = 'Deleting…';
+    confirmBtn.disabled = true;
+    try {
+      await apiDelete('/v1/endpoints/' + id);
+      overlay.remove();
+      location.hash = '#/agents';
+    } catch (e) {
+      confirmBtn.textContent = 'Delete';
+      confirmBtn.disabled = false;
+      overlay.querySelector('.modal-body').innerHTML =
+        `<span style="color:var(--critical)">Error: ${esc(e.message)}</span>`;
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
