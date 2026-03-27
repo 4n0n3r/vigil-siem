@@ -1,4 +1,4 @@
-//go:build !cloud
+//go:build !cloud && !agentonly
 
 package cmd
 

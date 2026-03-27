@@ -7,12 +7,17 @@ VERSION ?= dev
 
 LDFLAGS := -s -w -X 'github.com/vigil/vigil/cmd.Version=$(VERSION)'
 
-.PHONY: build build-cloud install test tidy clean
+.PHONY: build build-agent build-cloud install test tidy clean
 
-## build: compile the vigil binary into bin/
+## build: compile the full vigil management CLI into bin/
 build:
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) .
+
+## build-agent: compile the slim agent-only binary into bin/vigil-agent
+build-agent:
+	@mkdir -p $(BIN_DIR)
+	CGO_ENABLED=0 go build -tags agentonly -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY)-agent .
 
 ## build-cloud: compile the vigil binary with cloud collector support (AWS/Azure/GCP)
 build-cloud:

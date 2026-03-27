@@ -36,9 +36,9 @@ if (-not $Version) {
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/v$Version" -Headers $Headers
 }
 
-$binaryName  = "vigil_${Version}_windows_amd64.exe"
+$binaryName  = "vigil-agent_${Version}_windows_amd64.exe"
 
-Write-Host "Installing vigil v$Version..."
+Write-Host "Installing vigil-agent v$Version..."
 
 $binaryUrl   = ($release.assets | Where-Object { $_.name -eq $binaryName }).browser_download_url
 $checksumUrl = ($release.assets | Where-Object { $_.name -eq "checksums.txt" }).browser_download_url
@@ -48,8 +48,8 @@ if (-not $binaryUrl) {
     exit 1
 }
 
-$tmpBin      = Join-Path $env:TEMP "vigil_update.exe"
-$tmpChecksums = Join-Path $env:TEMP "vigil_checksums.txt"
+$tmpBin      = Join-Path $env:TEMP "vigil-agent_update.exe"
+$tmpChecksums = Join-Path $env:TEMP "vigil-agent_checksums.txt"
 
 # Clean up temp files when done
 try {
@@ -74,7 +74,7 @@ try {
 
     # Install binary
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    Copy-Item $tmpBin "$InstallDir\vigil.exe" -Force
+    Copy-Item $tmpBin "$InstallDir\vigil-agent.exe" -Force
 
     # Add to system PATH if not already present
     $machinePath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
@@ -84,23 +84,23 @@ try {
     }
 
     Write-Host ""
-    Write-Host "vigil v$Version installed to $InstallDir\vigil.exe"
+    Write-Host "vigil-agent v$Version installed to $InstallDir\vigil-agent.exe"
     Write-Host ""
     Write-Host "Next steps (run as administrator):"
 
     if ($ApiUrl) {
-        Write-Host "  vigil config set api_url $ApiUrl"
+        Write-Host "  vigil-agent config set api_url $ApiUrl"
     } else {
-        Write-Host "  vigil config set api_url http://your-vigil-server:8001"
+        Write-Host "  vigil-agent config set api_url http://your-vigil-server:8001"
     }
 
     if ($EnrollToken) {
-        Write-Host "  vigil agent register --name $env:COMPUTERNAME --enroll-token $EnrollToken"
+        Write-Host "  vigil-agent agent register --name $env:COMPUTERNAME --enroll-token $EnrollToken"
     } else {
-        Write-Host "  vigil agent register --name $env:COMPUTERNAME"
+        Write-Host "  vigil-agent agent register --name $env:COMPUTERNAME"
         Write-Host "  # (If the server requires auth, add: --enroll-token <token>)"
     }
-    Write-Host "  vigil agent install"
+    Write-Host "  vigil-agent agent install"
     Write-Host "  sc start VIGILAgent"
 
 } finally {

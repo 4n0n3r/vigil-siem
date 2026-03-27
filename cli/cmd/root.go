@@ -94,16 +94,7 @@ func init() {
 		"Output format: json|table",
 	)
 
-	rootCmd.AddCommand(ingestCmd)
-	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(detectionsCmd)
-	rootCmd.AddCommand(alertsCmd)
-	rootCmd.AddCommand(forensicCmd)
-	rootCmd.AddCommand(webCmd)
-	rootCmd.AddCommand(huntCmd)
 	rootCmd.AddCommand(configCmd)
-	rootCmd.AddCommand(endpointsCmd)
 	rootCmd.AddCommand(doctorCmd)
-	rootCmd.AddCommand(cloudCmd)
 }

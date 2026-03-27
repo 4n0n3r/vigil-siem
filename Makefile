@@ -1,4 +1,4 @@
-.PHONY: up down restart logs status build-cli prod-up
+.PHONY: up down restart logs status build-cli build-agent prod-up
 
 up:          ## Start the full stack (dev mode, hot-reload on)
 	docker compose -f api/docker-compose.yml up -d
@@ -15,8 +15,11 @@ logs:        ## Tail API logs
 status:      ## Show container health
 	docker compose -f api/docker-compose.yml ps
 
-build-cli:   ## Build the CLI binary → cli/bin/vigil
+build-cli:   ## Build the full management CLI → cli/bin/vigil
 	cd cli && make build
+
+build-agent: ## Build the slim agent-only binary → cli/bin/vigil-agent
+	cd cli && make build-agent
 
 prod-up:     ## Start in production mode (auth on, no hot-reload, DBs not exposed)
 	docker compose -f api/docker-compose.yml -f api/docker-compose.prod.yml up -d

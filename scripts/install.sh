@@ -17,7 +17,7 @@ set -euo pipefail
 
 REPO="4n0n3r/vigil-siem"
 INSTALL_DIR="${VIGIL_INSTALL_DIR:-/usr/local/bin}"
-BINARY="vigil"
+BINARY="vigil-agent"
 API_URL="${VIGIL_URL:-}"
 ENROLL_TOKEN="${VIGIL_ENROLL_TOKEN:-}"
 
@@ -63,6 +63,7 @@ if [[ -z "${VIGIL_VERSION:-}" ]]; then
 fi
 
 BINARY_NAME="${BINARY}_${VIGIL_VERSION}_${OS}_${ARCH}"
+INSTALL_NAME="vigil-agent"
 BASE_URL="https://github.com/$REPO/releases/download/v${VIGIL_VERSION}"
 
 echo "Installing vigil v${VIGIL_VERSION} (${OS}/${ARCH})..."
@@ -104,14 +105,14 @@ chmod +x "$TMP_BIN"
 mkdir -p "$INSTALL_DIR"
 
 if [[ -w "$INSTALL_DIR" ]]; then
-  mv "$TMP_BIN" "$INSTALL_DIR/$BINARY"
+  mv "$TMP_BIN" "$INSTALL_DIR/$INSTALL_NAME"
 else
   echo "Install directory requires elevated permissions, using sudo..."
-  sudo mv "$TMP_BIN" "$INSTALL_DIR/$BINARY"
+  sudo mv "$TMP_BIN" "$INSTALL_DIR/$INSTALL_NAME"
 fi
 
 echo ""
-echo "vigil v${VIGIL_VERSION} installed to $INSTALL_DIR/$BINARY"
+echo "vigil-agent v${VIGIL_VERSION} installed to $INSTALL_DIR/$INSTALL_NAME"
 echo ""
 echo "Next steps:"
 if [[ -n "$API_URL" ]]; then
@@ -122,12 +123,12 @@ fi
 
 HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
 if [[ -n "$ENROLL_TOKEN" ]]; then
-  echo "  vigil agent register --name $HOSTNAME_SHORT --enroll-token $ENROLL_TOKEN"
+  echo "  vigil-agent agent register --name $HOSTNAME_SHORT --enroll-token $ENROLL_TOKEN"
 else
-  echo "  vigil agent register --name $HOSTNAME_SHORT"
+  echo "  vigil-agent agent register --name $HOSTNAME_SHORT"
   echo "  # (If the server requires auth, add: --enroll-token <token>)"
 fi
-echo "  vigil agent start"
+echo "  vigil-agent agent start"
 echo ""
 echo "To install as a systemd service:"
 echo "  sudo tee /etc/systemd/system/vigil-agent.service <<EOF"
@@ -136,11 +137,8 @@ echo "  Description=Vigil Security Agent"
 echo "  After=network.target"
 echo ""
 echo "  [Service]"
-echo "  ExecStart=$INSTALL_DIR/$BINARY agent start --profile standard"
+echo "  ExecStart=$INSTALL_DIR/$INSTALL_NAME agent start --profile standard"
 echo "  Environment=VIGIL_API_URL=${API_URL:-http://your-vigil-server:8001}"
-if [[ -n "$ENROLL_TOKEN" ]]; then
-  echo "  Environment=VIGIL_ENROLL_TOKEN=$ENROLL_TOKEN"
-fi
 echo "  Restart=on-failure"
 echo ""
 echo "  [Install]"
