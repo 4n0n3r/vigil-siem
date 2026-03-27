@@ -121,6 +121,19 @@ async def heartbeat(endpoint_id: str) -> bool:
     return result == "UPDATE 1"
 
 
+async def delete_endpoint(endpoint_id: str) -> bool:
+    """Delete an endpoint by ID. Returns True if a row was deleted."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return False
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM endpoints WHERE id = $1", endpoint_id
+        )
+    invalidate_cache()
+    return result == "DELETE 1"
+
+
 async def validate_api_key(api_key: str) -> Optional[dict]:
     """Return the endpoint dict for the given key, or None if invalid.
 

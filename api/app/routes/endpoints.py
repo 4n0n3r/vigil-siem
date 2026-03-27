@@ -160,6 +160,24 @@ async def get_endpoint(endpoint_id: str):
 
 
 # ---------------------------------------------------------------------------
+# DELETE /endpoints/{id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/endpoints/{endpoint_id}", status_code=204)
+async def delete_endpoint(endpoint_id: str):
+    """Delete an endpoint and its API key. The endpoint will need to re-register."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return _db_unavailable()
+
+    ok = await pg_endpoints.delete_endpoint(endpoint_id)
+    if not ok:
+        return _not_found(endpoint_id)
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # PATCH /endpoints/{id}/heartbeat
 # ---------------------------------------------------------------------------
 

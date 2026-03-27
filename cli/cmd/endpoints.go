@@ -30,11 +30,12 @@ type endpointListResponse struct {
 var endpointsCmd = &cobra.Command{
 	Use:   "endpoints",
 	Short: "Manage registered endpoints",
-	Long: `List and inspect registered Vigil endpoints.
+	Long: `List, inspect, and delete registered Vigil endpoints.
 
 Subcommands:
-  list   List all registered endpoints
-  get    Get details for a specific endpoint`,
+  list     List all registered endpoints
+  get      Get details for a specific endpoint
+  delete   Delete an endpoint (use full UUID from endpoints list)`,
 }
 
 // vigil endpoints list
@@ -104,7 +105,35 @@ var endpointsGetCmd = &cobra.Command{
 	},
 }
 
+// vigil endpoints delete <id>
+var endpointsDeleteCmd = &cobra.Command{
+	Use:   "delete <id>",
+	Short: "Delete an endpoint and its API key",
+	Long: `Delete an endpoint from the registry.
+
+The endpoint's API key is invalidated immediately. To onboard the device
+again, run vigil-agent agent register (with a new enrollment token if
+the server has VIGIL_REQUIRE_AUTH=true).`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := apiClient.Delete("/v1/endpoints/" + args[0]); err != nil {
+			output.PrintErrorFromErr(err)
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			output.PrintJSON(map[string]string{"status": "deleted", "id": args[0]})
+			return nil
+		}
+		fmt.Printf("Endpoint %s deleted.\n", args[0])
+		fmt.Println("Re-register the device with: vigil-agent agent register")
+		return nil
+	},
+}
+
 func init() {
 	endpointsCmd.AddCommand(endpointsListCmd)
 	endpointsCmd.AddCommand(endpointsGetCmd)
+	endpointsCmd.AddCommand(endpointsDeleteCmd)
 }
