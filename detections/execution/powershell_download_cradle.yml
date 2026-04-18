@@ -5,14 +5,16 @@ description: >
   Detects PowerShell commands that download and execute code from a remote source
   (IEX, Invoke-Expression, DownloadString, WebClient). This pattern is used by
   virtually all PowerShell-based malware for in-memory payload staging.
+  Covers both Security Event 4688 and Sysmon Event 1.
 logsource:
   product: windows
   service: security
 detection:
-  selection:
+  # Security channel path
+  sec_process:
     event_id: 4688
-    event_data.NewProcessName|endswith: "powershell.exe"
-  download:
+    event_data.NewProcessName|contains: "powershell"
+  sec_download:
     event_data.CommandLine|contains:
       - "IEX"
       - "Invoke-Expression"
@@ -23,7 +25,24 @@ detection:
       - "Invoke-WebRequest"
       - "iwr "
       - "curl "
-  condition: selection and download
+      - "wget "
+  # Sysmon path
+  sysmon_process:
+    event_id: 1
+    event_data.Image|contains: "powershell"
+  sysmon_download:
+    event_data.CommandLine|contains:
+      - "IEX"
+      - "Invoke-Expression"
+      - "DownloadString"
+      - "DownloadFile"
+      - "WebClient"
+      - "Net.WebClient"
+      - "Invoke-WebRequest"
+      - "iwr "
+      - "curl "
+      - "wget "
+  condition: (sec_process and sec_download) or (sysmon_process and sysmon_download)
 level: high
 tags:
   - attack.execution

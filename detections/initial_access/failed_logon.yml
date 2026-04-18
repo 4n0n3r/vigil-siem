@@ -1,21 +1,31 @@
-title: Failed Logon Attempt
+title: Failed Logon Attempt — Service or Batch Context
 id: 9a8b2c1d-4e5f-6789-abcd-ef0123456789
 status: stable
 description: >
-  Detects failed logon attempts on Windows endpoints (Event ID 4625).
-  Multiple occurrences from the same source may indicate a brute force attack.
+  Detects failed Windows logon attempts (Event ID 4625) for LogonType 4 (batch)
+  and LogonType 5 (service). These types are NOT covered by the brute-force rule
+  (which targets interactive/network/RDP logons) and indicate misconfigured services
+  or scheduled tasks running with stale or wrong credentials — a useful signal for
+  both operational hygiene and detecting attacker-created service accounts.
+  For interactive/network failures (LogonType 2/3/7/8/10) see brute_force_multiple_failures.
 logsource:
   product: windows
   service: security
 detection:
   selection:
     event_id: 4625
-  condition: selection
+    event_data.LogonType:
+      - "4"
+      - "5"
+  # Machine accounts failing on their own host are common during domain ops — filter
+  filter_machine_self:
+    event_data.TargetUserName|endswith: "$"
+  condition: selection and not filter_machine_self
 level: medium
 tags:
   - attack.initial_access
   - attack.credential_access
   - attack.t1110
 falsepositives:
-  - Mistyped passwords
-  - Legitimate automated services with cached credentials
+  - Windows services with recently changed or expired account passwords
+  - Scheduled tasks running under a decommissioned service account

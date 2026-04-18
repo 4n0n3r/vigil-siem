@@ -2,10 +2,10 @@ title: Multiple Failed Logon Attempts (Brute Force)
 id: 3c4d5e6f-7890-abcd-ef01-234567890abc
 status: stable
 description: >
-  Detects repeated failed Windows logon attempts from a single source,
-  which may indicate a brute-force or password spray attack.
-  Each 4625 event is evaluated individually; correlate by TargetUserName
-  or IpAddress to identify bursts.
+  Detects failed Windows logon attempts (Event ID 4625).
+  LogonType 2 = interactive, 3 = network, 7 = unlock, 8 = cleartext,
+  10 = remote interactive (RDP). All are relevant; correlate by
+  TargetUserName or IpAddress to identify bursts.
 logsource:
   product: windows
   service: security
@@ -13,7 +13,9 @@ detection:
   selection:
     event_id: 4625
     event_data.LogonType:
+      - "2"
       - "3"
+      - "7"
       - "8"
       - "10"
   condition: selection
@@ -25,3 +27,4 @@ tags:
 falsepositives:
   - Misconfigured services with stale credentials
   - Legitimate remote access with wrong password
+  - Screen saver unlock with wrong PIN

@@ -5,11 +5,13 @@ description: >
   Detects Microsoft Office applications (Word, Excel, PowerPoint, Outlook)
   spawning command interpreters (cmd.exe, powershell.exe, wscript.exe, etc.).
   This is a primary indicator of macro-based malware or document exploit.
+  Covers Security Event 4688 (requires ParentProcessName audit) and Sysmon Event 1.
 logsource:
   product: windows
   service: security
 detection:
-  office_parent:
+  # Security channel path (requires process creation audit with parent process tracking)
+  sec_office_parent:
     event_id: 4688
     event_data.ParentProcessName|contains:
       - "winword.exe"
@@ -18,7 +20,8 @@ detection:
       - "outlook.exe"
       - "onenote.exe"
       - "msaccess.exe"
-  shell_child:
+      - "mspub.exe"
+  sec_shell_child:
     event_data.NewProcessName|contains:
       - "cmd.exe"
       - "powershell.exe"
@@ -27,7 +30,27 @@ detection:
       - "mshta.exe"
       - "rundll32.exe"
       - "regsvr32.exe"
-  condition: office_parent and shell_child
+  # Sysmon path (ParentImage is always populated in Sysmon Event 1)
+  sysmon_office_parent:
+    event_id: 1
+    event_data.ParentImage|contains:
+      - "winword.exe"
+      - "excel.exe"
+      - "powerpnt.exe"
+      - "outlook.exe"
+      - "onenote.exe"
+      - "msaccess.exe"
+      - "mspub.exe"
+  sysmon_shell_child:
+    event_data.Image|contains:
+      - "cmd.exe"
+      - "powershell.exe"
+      - "wscript.exe"
+      - "cscript.exe"
+      - "mshta.exe"
+      - "rundll32.exe"
+      - "regsvr32.exe"
+  condition: (sec_office_parent and sec_shell_child) or (sysmon_office_parent and sysmon_shell_child)
 level: critical
 tags:
   - attack.execution

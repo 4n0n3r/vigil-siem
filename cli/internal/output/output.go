@@ -34,12 +34,19 @@ func PrintJSON(v interface{}) {
 // PrintError writes a structured JSON error to stderr and causes the process to
 // exit with code 1. It never panics.
 func PrintError(errorCode, message, detail string) {
+	PrintErrorWithHint(errorCode, message, detail, "")
+}
+
+// PrintErrorWithHint writes a structured JSON error with an optional hint to
+// stderr and causes the process to exit with code 1.
+func PrintErrorWithHint(errorCode, message, detail, hint string) {
 	type errOut struct {
 		ErrorCode string `json:"error_code"`
 		Message   string `json:"message"`
 		Detail    string `json:"detail"`
+		Hint      string `json:"hint,omitempty"`
 	}
-	e := errOut{ErrorCode: errorCode, Message: message, Detail: detail}
+	e := errOut{ErrorCode: errorCode, Message: message, Detail: detail, Hint: hint}
 	enc := json.NewEncoder(os.Stderr)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(e)
@@ -66,10 +73,11 @@ func PrintErrorFromErr(err error) {
 		ErrorCode string `json:"error_code"`
 		Message   string `json:"message"`
 		Detail    string `json:"detail"`
+		Hint      string `json:"hint"`
 	}
 	var shape errShape
 	if jsonErr := json.Unmarshal([]byte(err.Error()), &shape); jsonErr == nil && shape.ErrorCode != "" {
-		PrintError(shape.ErrorCode, shape.Message, shape.Detail)
+		PrintErrorWithHint(shape.ErrorCode, shape.Message, shape.Detail, shape.Hint)
 		return
 	}
 

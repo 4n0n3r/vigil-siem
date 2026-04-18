@@ -1,0 +1,35 @@
+## Production overrides for Vigil
+##
+## Usage:
+##   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+##
+## Or from the repo root:
+##   make prod-up
+##
+## What this changes vs. the default docker-compose.yml:
+##   - API: no hot-reload, 2 workers, auth required, log level info
+##   - Postgres: port not exposed externally (internal network only)
+##   - ClickHouse: ports bound to 127.0.0.1 only (put a reverse proxy in front for TLS)
+##   - All services: restart: always
+
+version: "3.9"
+
+services:
+  api:
+    command: >
+      sh -c "pip install --quiet -r requirements.txt &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 2"
+    environment:
+      - VIGIL_REQUIRE_AUTH=true
+      - VIGIL_LOG_LEVEL=info
+    restart: always
+
+  postgres:
+    ports: []        # not exposed externally — accessed by API over the Docker network
+    restart: always
+
+  clickhouse:
+    ports:
+      - "127.0.0.1:8123:8123"   # HTTP — bind to localhost only, reverse proxy handles TLS
+      - "127.0.0.1:9000:9000"   # native TCP — localhost only
+    restart: always

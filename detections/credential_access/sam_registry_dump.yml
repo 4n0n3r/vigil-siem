@@ -1,0 +1,49 @@
+title: SAM/SYSTEM/SECURITY Registry Hive Dump
+id: f6071829-0123-4567-f012-567890123456
+status: stable
+description: >
+  Detects attempts to dump the SAM, SYSTEM, or SECURITY registry hives
+  using reg.exe save or copy. These hives contain password hashes (SAM),
+  the SYSKEY needed to decrypt them (SYSTEM), and cached domain credentials
+  (SECURITY). Dumping them offline allows pass-the-hash and cracking attacks.
+logsource:
+  product: windows
+  service: security
+detection:
+  # Match "reg save HKLM\SAM ..." — combines verb + path in single patterns
+  sysmon_reg_dump:
+    event_id: 1
+    event_data.Image|contains: "reg.exe"
+    event_data.CommandLine|contains:
+      - "save HKLM\\SAM"
+      - "save HKLM\\SYSTEM"
+      - "save HKLM\\SECURITY"
+      - "save hklm\\sam"
+      - "save hklm\\system"
+      - "save hklm\\security"
+      - "copy HKLM\\SAM"
+      - "copy HKLM\\SYSTEM"
+      - "copy hklm\\sam"
+      - "copy hklm\\system"
+      - "export HKLM\\SAM"
+      - "export HKLM\\SYSTEM"
+  sec_reg_dump:
+    event_id: 4688
+    event_data.NewProcessName|contains: "reg.exe"
+    event_data.CommandLine|contains:
+      - "save HKLM\\SAM"
+      - "save HKLM\\SYSTEM"
+      - "save HKLM\\SECURITY"
+      - "save hklm\\sam"
+      - "save hklm\\system"
+      - "copy HKLM\\SAM"
+      - "copy hklm\\sam"
+  condition: sysmon_reg_dump or sec_reg_dump
+level: critical
+tags:
+  - attack.credential_access
+  - attack.t1003.002
+  - attack.t1003.004
+  - attack.t1003.005
+falsepositives:
+  - Backup software performing registry exports (very rare for SAM/SYSTEM)

@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _fallback_events: list[StoredEvent] = []
+_FALLBACK_MAX = 50_000
 
 # ---------------------------------------------------------------------------
 # Event-level LRU dedup — prevents re-ingesting the same source log record
@@ -80,6 +81,8 @@ async def add_event(event: StoredEvent) -> bool:
                 str(exc).replace('"', "'"),
             )
     _fallback_events.append(event)
+    if len(_fallback_events) > _FALLBACK_MAX:
+        del _fallback_events[0]
     return True
 
 
@@ -88,18 +91,43 @@ async def search_events(
     from_time: Optional[datetime],
     to_time: Optional[datetime],
     limit: int,
+    endpoint_id: Optional[str] = None,
 ) -> list[StoredEvent]:
     """Search events — ClickHouse if available, else fallback list."""
     client = _get_ch_client()
     if client is not None:
         try:
-            return await asyncio.to_thread(_ch_search, client, query, from_time, to_time, limit)
+            return await asyncio.to_thread(_ch_search, client, query, from_time, to_time, limit, endpoint_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 '{"event": "ch_search_failed", "error": "%s", "fallback": true}',
                 str(exc).replace('"', "'"),
             )
-    return _fallback_search(query, from_time, to_time, limit)
+    return await asyncio.to_thread(_fallback_search, query, from_time, to_time, limit, endpoint_id)
+
+
+async def hunt_events(
+    query: Optional[str],
+    from_time: Optional[datetime],
+    to_time: Optional[datetime],
+    limit: int,
+    agg_field: Optional[str],
+    timeline: bool,
+    endpoint_id: Optional[str] = None,
+) -> dict:
+    """Run an HQL hunt query and return events + aggregations + timeline."""
+    client = _get_ch_client()
+    if client is not None:
+        try:
+            return await asyncio.to_thread(
+                _ch_hunt, client, query, from_time, to_time, limit, agg_field, timeline, endpoint_id
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                '{"event": "ch_hunt_failed", "error": "%s", "fallback": true}',
+                str(exc).replace('"', "'"),
+            )
+    return await asyncio.to_thread(_fallback_hunt, query, from_time, to_time, limit, agg_field, timeline, endpoint_id)
 
 
 async def count_last_24h() -> int:
@@ -113,7 +141,7 @@ async def count_last_24h() -> int:
                 '{"event": "ch_count_failed", "error": "%s", "fallback": true}',
                 str(exc).replace('"', "'"),
             )
-    return _fallback_count_24h()
+    return await asyncio.to_thread(_fallback_count_24h)
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +161,9 @@ def _ch_insert(client, event: StoredEvent) -> None:
             event.source,
             json.dumps(event.event),
             event.timestamp,
+            event.endpoint_id or "",
         ]],
-        column_names=["id", "source", "event", "timestamp"],
+        column_names=["id", "source", "event", "timestamp", "endpoint_id"],
     )
 
 
@@ -144,6 +173,7 @@ def _ch_search(
     from_time: Optional[datetime],
     to_time: Optional[datetime],
     limit: int,
+    endpoint_id: Optional[str] = None,
 ) -> list[StoredEvent]:
     conditions = []
     params: dict = {}
@@ -160,6 +190,9 @@ def _ch_search(
             " OR event LIKE {query_like:String})"
         )
         params["query_like"] = f"%{query}%"
+    if endpoint_id:
+        conditions.append("endpoint_id = {endpoint_id:String}")
+        params["endpoint_id"] = endpoint_id
 
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -192,6 +225,104 @@ def _ch_search(
     return events
 
 
+def _ch_hunt(
+    client,
+    query: Optional[str],
+    from_time: Optional[datetime],
+    to_time: Optional[datetime],
+    limit: int,
+    agg_field: Optional[str],
+    timeline: bool,
+    endpoint_id: Optional[str] = None,
+) -> dict:
+    from app.hunt.parser import parse_hql  # noqa: PLC0415
+    from app.hunt.translator import to_clickhouse_sql  # noqa: PLC0415
+
+    conditions = []
+    params: dict = {}
+
+    if from_time is not None:
+        conditions.append("timestamp >= {from_time:DateTime64}")
+        params["from_time"] = _ensure_tz(from_time)
+    if to_time is not None:
+        conditions.append("timestamp <= {to_time:DateTime64}")
+        params["to_time"] = _ensure_tz(to_time)
+
+    if query:
+        ast = parse_hql(query)
+        if ast is not None:
+            conditions.append(to_clickhouse_sql(ast))
+    if endpoint_id:
+        conditions.append("endpoint_id = {endpoint_id:String}")
+        params["endpoint_id"] = endpoint_id
+
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # Main events query
+    sql = f"""
+        SELECT id, source, event, timestamp
+        FROM vigil_events
+        {where_clause}
+        ORDER BY timestamp DESC
+        LIMIT {{limit:UInt64}}
+    """
+    params["limit"] = limit
+    result = client.query(sql, parameters=params)
+
+    events: list[StoredEvent] = []
+    for row in result.result_rows:
+        row_id, source, event_json, ts = row
+        try:
+            event_dict = json.loads(event_json)
+        except Exception:  # noqa: BLE001
+            event_dict = {"_raw": event_json}
+        events.append(
+            StoredEvent(
+                id=row_id,
+                source=source,
+                event=event_dict,
+                timestamp=ts if isinstance(ts, datetime) else datetime.fromisoformat(str(ts)),
+            )
+        )
+
+    # Aggregation query
+    aggregations: list[dict] = []
+    if agg_field:
+        path_parts = agg_field.split(".")
+        ch_path = ", ".join(f"'{p}'" for p in path_parts)
+        agg_sql = f"""
+            SELECT JSONExtractString(event, {ch_path}) AS val, count() AS cnt
+            FROM vigil_events
+            {where_clause}
+            GROUP BY val
+            ORDER BY cnt DESC
+            LIMIT 50
+        """
+        agg_result = client.query(agg_sql, parameters=params)
+        for row in agg_result.result_rows:
+            val, cnt = row
+            if val:
+                aggregations.append({"value": str(val), "count": int(cnt)})
+
+    # Timeline query
+    timeline_buckets: list[dict] = []
+    if timeline:
+        tl_sql = f"""
+            SELECT toStartOfHour(timestamp) AS bucket, count() AS cnt
+            FROM vigil_events
+            {where_clause}
+            GROUP BY bucket
+            ORDER BY bucket ASC
+        """
+        tl_result = client.query(tl_sql, parameters=params)
+        for row in tl_result.result_rows:
+            bucket, cnt = row
+            ts_val = bucket if isinstance(bucket, datetime) else datetime.fromisoformat(str(bucket))
+            timeline_buckets.append({"ts": ts_val, "count": int(cnt)})
+
+    return {"events": events, "aggregations": aggregations, "timeline": timeline_buckets}
+
+
 def _ch_count_24h(client) -> int:
     result = client.query(
         "SELECT count() FROM vigil_events WHERE timestamp > now() - INTERVAL 24 HOUR"
@@ -211,6 +342,7 @@ def _fallback_search(
     from_time: Optional[datetime],
     to_time: Optional[datetime],
     limit: int,
+    endpoint_id: Optional[str] = None,
 ) -> list[StoredEvent]:
     results: list[StoredEvent] = []
     for ev in _fallback_events:
@@ -223,9 +355,80 @@ def _fallback_search(
             haystack = str(ev.model_dump()).lower()
             if query.lower() not in haystack:
                 continue
+        if endpoint_id and ev.endpoint_id != endpoint_id:
+            continue
         results.append(ev)
     results.sort(key=lambda e: _ensure_tz(e.timestamp), reverse=True)
     return results[:limit]
+
+
+def _fallback_hunt(
+    query: Optional[str],
+    from_time: Optional[datetime],
+    to_time: Optional[datetime],
+    limit: int,
+    agg_field: Optional[str],
+    timeline: bool,
+    endpoint_id: Optional[str] = None,
+) -> dict:
+    from app.hunt.parser import parse_hql  # noqa: PLC0415
+    from app.hunt.translator import to_predicate  # noqa: PLC0415
+
+    predicate = None
+    if query:
+        ast = parse_hql(query)
+        if ast is not None:
+            predicate = to_predicate(ast)
+
+    matched: list[StoredEvent] = []
+    for ev in _fallback_events:
+        ts = _ensure_tz(ev.timestamp)
+        if from_time is not None and ts < _ensure_tz(from_time):
+            continue
+        if to_time is not None and ts > _ensure_tz(to_time):
+            continue
+        if predicate is not None:
+            # Include top-level StoredEvent fields (source) in the dict
+            # so field:source queries work the same as in ClickHouse.
+            ev_dict = {"source": ev.source, **ev.event}
+            if not predicate(ev_dict):
+                continue
+        if endpoint_id and ev.endpoint_id != endpoint_id:
+            continue
+        matched.append(ev)
+
+    matched.sort(key=lambda e: _ensure_tz(e.timestamp), reverse=True)
+    events = matched[:limit]
+
+    aggregations: list[dict] = []
+    if agg_field:
+        from collections import Counter  # noqa: PLC0415
+        parts = agg_field.split(".")
+        counter: Counter = Counter()
+        for ev in matched:
+            val = ev.event
+            for p in parts:
+                if isinstance(val, dict):
+                    val = val.get(p)
+                else:
+                    val = None
+                    break
+            if val is not None:
+                counter[str(val)] += 1
+        aggregations = [{"value": v, "count": c} for v, c in counter.most_common(50)]
+
+    timeline_buckets: list[dict] = []
+    if timeline:
+        from collections import Counter as _Counter  # noqa: PLC0415
+        tc: _Counter = _Counter()
+        for ev in matched:
+            ts = _ensure_tz(ev.timestamp)
+            bucket = ts.replace(minute=0, second=0, microsecond=0)
+            tc[bucket] += 1
+        for bucket in sorted(tc):
+            timeline_buckets.append({"ts": bucket, "count": tc[bucket]})
+
+    return {"events": events, "aggregations": aggregations, "timeline": timeline_buckets}
 
 
 def _fallback_count_24h() -> int:

@@ -3,13 +3,18 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/vigil/vigil/internal/agent"
+	"github.com/vigil/vigil/internal/config"
 	"github.com/vigil/vigil/internal/output"
 )
 
@@ -23,6 +28,7 @@ var (
 	agentFlushInterval time.Duration
 	agentBookmarkDir   string
 	agentProfile       string
+	agentWebLogs       []string // "name:format:/path/to/access.log"
 )
 
 // ----------------------------------------------------------------------------
@@ -38,6 +44,7 @@ Subcommands:
   start      Start collecting events (foreground)
   install    Install as a Windows Service (auto-start)
   uninstall  Remove the Windows Service
+  restart    Restart the Windows Service (stop + start)
   status     Show agent health and statistics`,
 }
 
@@ -76,10 +83,26 @@ the Windows channel list explicitly.`,
 			cfg.BookmarkDir = agentBookmarkDir
 		}
 
+		// Pass endpoint ID so the agent can send heartbeats.
+		cfg.EndpointID = globalConfig.EndpointID
+
 		a := agent.New(apiClient, cfg)
 
 		// Wire platform-specific collectors (defined in agent_windows.go / agent_linux.go).
 		addPlatformCollectors(a, cfg, agentProfile)
+
+		// Wire web log collectors (cross-platform, one per --web-log entry).
+		for _, spec := range agentWebLogs {
+			parts := strings.SplitN(spec, ":", 3)
+			if len(parts) != 3 {
+				fmt.Fprintf(os.Stderr,
+					`{"error_code":"INVALID_FLAG","message":"--web-log must be name:format:path, got %q"}`+"\n", spec)
+				continue
+			}
+			name, format, logPath := parts[0], parts[1], parts[2]
+			offsetFile := filepath.Join(cfg.BookmarkDir, "weblog_"+name+".offset")
+			a.AddCollector(agent.NewWebLogCollector(name, logPath, agent.WebLogFormat(format), offsetFile))
+		}
 
 		// Detect Windows Service invocation.
 		if agent.RunningAsService() {
@@ -150,6 +173,21 @@ var agentInstallCmd = &cobra.Command{
 			return nil
 		}
 
+		// Write machine-wide config to ProgramData so the Windows Service
+		// (LocalSystem) can read the API URL and key — it cannot access the
+		// per-user APPDATA config file.
+		if machPath := config.MachineConfigPath(); machPath != "" {
+			machCfg := config.Config{
+				APIURL:       apiClient.BaseURL,
+				APIKey:       apiClient.APIKey,
+				EndpointID:   globalConfig.EndpointID,
+				EndpointName: globalConfig.EndpointName,
+			}
+			if err := config.Save(machPath, machCfg); err != nil {
+				fmt.Printf("warning: could not write machine config (%s): %v\n", machPath, err)
+			}
+		}
+
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type result struct {
@@ -203,6 +241,37 @@ var agentUninstallCmd = &cobra.Command{
 }
 
 // ----------------------------------------------------------------------------
+// vigil agent restart
+// ----------------------------------------------------------------------------
+
+var agentRestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart the Vigil agent Windows Service",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := agent.RestartService(); err != nil {
+			output.PrintError("RESTART_ERROR", "failed to restart Windows Service", err.Error())
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			type result struct {
+				Status      string `json:"status"`
+				ServiceName string `json:"service_name"`
+			}
+			output.PrintJSON(result{Status: "restarted", ServiceName: "VIGILAgent"})
+		} else {
+			t := output.NewTable([]string{"Field", "Value"})
+			t.Append([]string{"Status", "restarted"})
+			t.Append([]string{"Service Name", "VIGILAgent"})
+			t.Render()
+			fmt.Println()
+		}
+		return nil
+	},
+}
+
+// ----------------------------------------------------------------------------
 // vigil agent status
 // ----------------------------------------------------------------------------
 
@@ -236,6 +305,14 @@ var agentStatusCmd = &cobra.Command{
 			lastFlush = fmt.Sprintf("%s ago", now.Sub(stats.LastFlushAt).Truncate(time.Second))
 		}
 
+		lastEvent := "never"
+		if !stats.LastEventAt.IsZero() {
+			lastEvent = fmt.Sprintf("%s ago (%s)",
+				now.Sub(stats.LastEventAt).Truncate(time.Second),
+				stats.LastEventAt.Format("15:04:05"),
+			)
+		}
+
 		lastError := "none"
 		if stats.LastError != "" {
 			lastError = stats.LastError
@@ -258,11 +335,125 @@ var agentStatusCmd = &cobra.Command{
 		t.Append([]string{"Events Collected", fmt.Sprintf("%d", stats.EventsCollected)})
 		t.Append([]string{"Events Flushed", fmt.Sprintf("%d", stats.EventsFlushed)})
 		t.Append([]string{"Flush Errors", fmt.Sprintf("%d", stats.FlushErrors)})
+		t.Append([]string{"Last Log Collected", lastEvent})
 		t.Append([]string{"Last Flush", lastFlush})
 		t.Append([]string{"Last Error", lastError})
 		t.Append([]string{"Collectors", channels})
 		t.Render()
 		fmt.Println()
+		return nil
+	},
+}
+
+// ----------------------------------------------------------------------------
+// vigil agent register
+// ----------------------------------------------------------------------------
+
+var (
+	agentRegisterName        string
+	agentRegisterHostname    string
+	agentRegisterEnrollToken string
+)
+
+var agentRegisterCmd = &cobra.Command{
+	Use:   "register",
+	Short: "Register this endpoint with the Vigil API and save credentials",
+	Long: `Register this endpoint with the Vigil API.
+
+The returned API key is saved to the local config file and will be sent
+automatically with every future request.  The key is shown only once.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		hostname := agentRegisterHostname
+		if hostname == "" {
+			h, _ := os.Hostname()
+			hostname = h
+		}
+		name := agentRegisterName
+		if name == "" {
+			name = hostname
+		}
+
+		type registerReq struct {
+			Name        string `json:"name"`
+			Hostname    string `json:"hostname"`
+			OS          string `json:"os"`
+			IPAddress   string `json:"ip_address,omitempty"`
+			EnrollToken string `json:"enroll_token,omitempty"`
+		}
+		type registerResp struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			APIKey    string `json:"api_key"`
+			CreatedAt string `json:"created_at"`
+		}
+
+		// Also accept enrollment token from VIGIL_ENROLL_TOKEN env var.
+		enrollToken := agentRegisterEnrollToken
+		if enrollToken == "" {
+			enrollToken = os.Getenv("VIGIL_ENROLL_TOKEN")
+		}
+
+		// Auto-detect first non-loopback IPv4 address.
+		ipAddress := ""
+		if addrs, err := net.InterfaceAddrs(); err == nil {
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+					continue
+				}
+				if ip4 := ip.To4(); ip4 != nil {
+					ipAddress = ip4.String()
+					break
+				}
+			}
+		}
+
+		body := registerReq{
+			Name:        name,
+			Hostname:    hostname,
+			OS:          runtime.GOOS,
+			IPAddress:   ipAddress,
+			EnrollToken: enrollToken,
+		}
+
+		var resp registerResp
+		if err := apiClient.Post("/v1/endpoints/register", body, &resp); err != nil {
+			output.PrintErrorFromErr(err)
+			return nil
+		}
+
+		// Persist api_key, endpoint_id, endpoint_name to config.
+		cfgPath := config.DefaultConfigPath()
+		cfg, _ := config.Load(cfgPath)
+		cfg.APIKey = resp.APIKey
+		cfg.EndpointID = resp.ID
+		cfg.EndpointName = resp.Name
+		if saveErr := config.Save(cfgPath, cfg); saveErr != nil {
+			output.PrintError("CONFIG_SAVE_ERROR", "registered but could not save credentials", saveErr.Error())
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			output.PrintJSON(resp)
+			return nil
+		}
+
+		t := output.NewTable([]string{"Field", "Value"})
+		t.Append([]string{"ID", resp.ID})
+		t.Append([]string{"Name", resp.Name})
+		t.Append([]string{"API Key", resp.APIKey})
+		t.Append([]string{"Created At", resp.CreatedAt})
+		t.Render()
+		fmt.Println()
+		fmt.Println("API key saved to:", cfgPath)
+		fmt.Println("IMPORTANT: Save this key — it will not be shown again.")
 		return nil
 	},
 }
@@ -293,12 +484,34 @@ func init() {
 		&agentBookmarkDir, "bookmark-dir", "",
 		"Directory for per-channel bookmark files (default: %%APPDATA%%\\Vigil\\bookmarks\\)",
 	)
+	agentStartCmd.Flags().StringArrayVar(
+		&agentWebLogs, "web-log", nil,
+		`Web access log to monitor, format: name:format:path (repeatable).
+    Formats: nginx, apache, clf, json.
+    Example: --web-log "myapp:nginx:/var/log/nginx/access.log"`,
+	)
+
+	// Flags for vigil agent register.
+	agentRegisterCmd.Flags().StringVar(
+		&agentRegisterName, "name", "",
+		"Friendly name for this endpoint (default: hostname)",
+	)
+	agentRegisterCmd.Flags().StringVar(
+		&agentRegisterHostname, "hostname", "",
+		"Override hostname reported to the API (default: os.Hostname())",
+	)
+	agentRegisterCmd.Flags().StringVar(
+		&agentRegisterEnrollToken, "enroll-token", "",
+		"Enrollment token (required when server has VIGIL_REQUIRE_AUTH=true; also reads VIGIL_ENROLL_TOKEN env var)",
+	)
 
 	// Register subcommands under agentCmd.
 	agentCmd.AddCommand(agentStartCmd)
 	agentCmd.AddCommand(agentInstallCmd)
 	agentCmd.AddCommand(agentUninstallCmd)
+	agentCmd.AddCommand(agentRestartCmd)
 	agentCmd.AddCommand(agentStatusCmd)
+	agentCmd.AddCommand(agentRegisterCmd)
 
 	// Register agentCmd under rootCmd.
 	rootCmd.AddCommand(agentCmd)

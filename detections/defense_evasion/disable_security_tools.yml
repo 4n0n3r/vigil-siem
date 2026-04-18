@@ -1,0 +1,57 @@
+title: Security Tool Termination or Disabling
+id: b7c8d9e0-8901-2345-bcde-345678901234
+status: stable
+description: >
+  Detects attempts to stop or disable security tools (AV, EDR, monitoring agents)
+  via taskkill, net stop, or sc config commands targeting known security product
+  process names. Attackers disable defenses before deploying ransomware or
+  other destructive payloads.
+logsource:
+  product: windows
+  service: security
+detection:
+  sysmon_taskkill:
+    event_id: 1
+    event_data.Image|contains: "taskkill.exe"
+    event_data.CommandLine|contains:
+      - "MsMpEng"
+      - "msseces"
+      - "MSASCui"
+      - "kavtray"
+      - "avp.exe"
+      - "ccSvcHst"
+      - "ekrn.exe"
+      - "bdagent"
+  sysmon_net_stop:
+    event_id: 1
+    event_data.Image|contains: "net.exe"
+    event_data.CommandLine|contains:
+      - "stop WinDefend"
+      - "stop MsMpSvc"
+      - "stop wscsvc"
+      - "stop wuauserv"
+      - "stop BITS"
+  sysmon_sc_disable:
+    event_id: 1
+    event_data.Image|contains: "sc.exe"
+    event_data.CommandLine|contains:
+      - "WinDefend"
+      - "wscsvc"
+      - "SecurityHealthService"
+      - "SenseIR"
+      - "MBAMService"
+  sec_net_stop:
+    event_id: 4688
+    event_data.NewProcessName|contains: "net.exe"
+    event_data.CommandLine|contains:
+      - "stop WinDefend"
+      - "stop wscsvc"
+  condition: sysmon_taskkill or sysmon_net_stop or sysmon_sc_disable or sec_net_stop
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+  - attack.t1489
+falsepositives:
+  - Authorized security tool updates requiring service restart
+  - IT testing in isolated environments

@@ -1,0 +1,65 @@
+title: Living-off-the-Land Binary (LOLBin) Execution
+id: d3e4f500-4567-8901-def0-901234567890
+status: stable
+description: >
+  Detects execution of Windows built-in binaries (LOLBins) with flags that
+  are abused for code execution, download, or decode operations.
+  certutil -decode/-urlcache downloads payloads; bitsadmin /transfer does the same;
+  regsvr32 /s /u /i can execute COM scriptlets; msiexec /q can install remote packages.
+logsource:
+  product: windows
+  service: security
+detection:
+  sysmon_certutil:
+    event_id: 1
+    event_data.Image|contains: "certutil.exe"
+    event_data.CommandLine|contains:
+      - "-decode"
+      - "-urlcache"
+      - "-f http"
+      - "-f https"
+      - "download"
+  sysmon_bitsadmin:
+    event_id: 1
+    event_data.Image|contains: "bitsadmin.exe"
+    event_data.CommandLine|contains:
+      - "/transfer"
+      - "/addfile"
+  sysmon_regsvr32:
+    event_id: 1
+    event_data.Image|contains: "regsvr32.exe"
+    event_data.CommandLine|contains:
+      - "/u "
+      - "/s "
+      - "/i:"
+      - "http"
+  sysmon_msiexec:
+    event_id: 1
+    event_data.Image|contains: "msiexec.exe"
+    event_data.CommandLine|contains:
+      - "http://"
+      - "https://"
+      - "\\\\127."
+  # Security 4688 variants (no CommandLine check — any execution is notable)
+  sec_certutil:
+    event_id: 4688
+    event_data.NewProcessName|contains: "certutil.exe"
+    event_data.CommandLine|contains:
+      - "-decode"
+      - "-urlcache"
+  sec_bitsadmin:
+    event_id: 4688
+    event_data.NewProcessName|contains: "bitsadmin.exe"
+    event_data.CommandLine|contains:
+      - "/transfer"
+  condition: sysmon_certutil or sysmon_bitsadmin or sysmon_regsvr32 or sysmon_msiexec or sec_certutil or sec_bitsadmin
+level: high
+tags:
+  - attack.execution
+  - attack.t1218
+  - attack.t1105
+  - attack.defense_evasion
+falsepositives:
+  - Software deployment tools using msiexec with URLs
+  - Certificate management using certutil
+  - IT automation using bitsadmin for downloads

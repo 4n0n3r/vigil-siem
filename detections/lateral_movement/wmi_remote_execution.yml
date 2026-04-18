@@ -1,0 +1,41 @@
+title: WMI Remote Command Execution
+id: c2d3e4f5-3456-7890-cdef-890123456789
+status: stable
+description: >
+  Detects WMI being used for remote code execution — a technique used by
+  PsExec alternatives, Cobalt Strike, and Empire. Sysmon Event 1 with
+  WmiPrvSE.exe as the parent process is highly reliable. Also detects
+  wmic.exe being called with /node: (remote target) syntax.
+logsource:
+  product: windows
+  service: security
+detection:
+  # WmiPrvSE.exe spawning unexpected child processes (Sysmon)
+  sysmon_wmiprvse_child:
+    event_id: 1
+    event_data.ParentImage|contains: "WmiPrvSE.exe"
+    event_data.Image|contains:
+      - "cmd.exe"
+      - "powershell.exe"
+      - "cscript.exe"
+      - "wscript.exe"
+      - "mshta.exe"
+  # wmic.exe called with remote /node: switch (Sysmon)
+  sysmon_wmic_remote:
+    event_id: 1
+    event_data.Image|contains: "wmic.exe"
+    event_data.CommandLine|contains: "/node:"
+  # Security 4688 variant
+  sec_wmic_remote:
+    event_id: 4688
+    event_data.NewProcessName|contains: "wmic.exe"
+    event_data.CommandLine|contains: "/node:"
+  condition: sysmon_wmiprvse_child or sysmon_wmic_remote or sec_wmic_remote
+level: high
+tags:
+  - attack.lateral_movement
+  - attack.t1047
+  - attack.execution
+falsepositives:
+  - Legitimate WMI-based management tools (SCCM, Ivanti, monitoring agents)
+  - IT administrators using wmic for inventory

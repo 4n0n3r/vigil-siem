@@ -44,13 +44,14 @@ func InstallService() error {
 
 	s, err = m.CreateService(
 		serviceName,
-		exePath+" agent start",
+		exePath,
 		mgr.Config{
 			DisplayName: serviceDisplayName,
 			StartType:   mgr.StartAutomatic,
 			ServiceType: windows.SERVICE_WIN32_OWN_PROCESS,
 			Description: serviceDescription,
 		},
+		"agent", "start",
 	)
 	if err != nil {
 		return fmt.Errorf("could not create service: %w", err)

@@ -1,0 +1,24 @@
+title: AWS CloudTrail IAM Policy Changes
+id: cloudtrail-iam-policy-changes
+status: stable
+description: Detects IAM policy changes via CloudTrail that may indicate privilege escalation.
+author: Vigil
+date: 2026/03/24
+tags:
+  - attack.privilege_escalation
+  - attack.t1098
+logsource:
+  category: cloud
+  product: aws
+detection:
+  selection:
+    event_name:
+      - PutUserPolicy
+      - AttachRolePolicy
+      - CreateAccessKey
+      - PutRolePolicy
+      - AttachUserPolicy
+  condition: selection
+falsepositives:
+  - Legitimate IAM administration
+level: high

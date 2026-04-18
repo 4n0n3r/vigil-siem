@@ -1,10 +1,10 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package agent
 
 import "context"
 
-// ForensicCollector is a stub on non-Windows platforms.
+// ForensicCollector is a stub on non-Windows, non-Linux platforms.
 type ForensicCollector struct{}
 
 func NewForensicCollector() *ForensicCollector { return &ForensicCollector{} }

@@ -1,0 +1,23 @@
+title: User Account Locked Out
+id: a6b7c8d9-7890-1234-abcd-234567890123
+status: stable
+description: >
+  Detects when a user account is locked out (Event 4740). Account lockouts
+  caused by many rapid failed logon attempts are a strong indicator of a
+  brute-force or password spray attack. The CallerComputerName field
+  identifies the source machine initiating the authentication attempts.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4740
+  condition: selection
+level: medium
+tags:
+  - attack.credential_access
+  - attack.t1110
+  - attack.t1110.003
+falsepositives:
+  - Users who have forgotten their password
+  - Services running with an expired or changed password

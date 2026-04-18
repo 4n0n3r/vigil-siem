@@ -15,6 +15,7 @@ type APIError struct {
 	ErrorCode string `json:"error_code"`
 	Message   string `json:"message"`
 	Detail    string `json:"detail"`
+	Hint      string `json:"hint,omitempty"`
 }
 
 func (e *APIError) Error() string {
@@ -25,13 +26,17 @@ func (e *APIError) Error() string {
 // Client is a thin HTTP wrapper for the Vigil API.
 type Client struct {
 	BaseURL    string
+	APIKey     string
+	AdminKey   string // sent as X-Vigil-Admin-Key when set (for token management)
 	HTTPClient *http.Client
 }
 
 // New creates a new Client with sensible defaults.
-func New(baseURL string) *Client {
+// apiKey may be empty for unauthenticated deployments.
+func New(baseURL, apiKey string) *Client {
 	return &Client{
 		BaseURL: baseURL,
+		APIKey:  apiKey,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -141,6 +146,12 @@ func (c *Client) Delete(path string) error {
 }
 
 func (c *Client) do(req *http.Request, dest interface{}) error {
+	if c.APIKey != "" {
+		req.Header.Set("X-Vigil-Key", c.APIKey)
+	}
+	if c.AdminKey != "" {
+		req.Header.Set("X-Vigil-Admin-Key", c.AdminKey)
+	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return &APIError{

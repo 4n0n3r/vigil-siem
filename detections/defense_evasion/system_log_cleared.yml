@@ -1,0 +1,21 @@
+title: Windows System Event Log Cleared
+id: b2c3d4e5-f601-7890-abcd-ef0123456789
+status: stable
+description: >
+  Detects when the Windows System event log is cleared (Event ID 104 in System channel).
+  Attackers clear event logs to remove evidence of activity. Event 1102 covers
+  the Security log; this rule covers the System log.
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    event_id: 104
+  condition: selection
+level: critical
+tags:
+  - attack.defense_evasion
+  - attack.t1070.001
+falsepositives:
+  - Planned log rotation by IT administrators
+  - Automated log archival processes

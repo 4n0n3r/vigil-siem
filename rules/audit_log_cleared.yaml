@@ -1,0 +1,21 @@
+title: Security Audit Log Cleared
+id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+status: stable
+description: >
+  Detects when the Windows Security audit log is cleared (Event ID 1102).
+  Attackers commonly clear the security log after gaining access to remove
+  evidence of their activity. This should be investigated immediately.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 1102
+  condition: selection
+level: critical
+tags:
+  - attack.defense_evasion
+  - attack.t1070.001
+falsepositives:
+  - Planned log rotation by IT administrators
+  - Automated log archival processes

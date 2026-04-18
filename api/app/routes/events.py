@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from app.models import (
     BatchIngestRequest,
@@ -20,7 +20,7 @@ from app.models import (
 )
 from app import store
 from app.sigma import loader, evaluator
-from app.db import pg_alerts
+from app.db import pg_alerts, pg_endpoints
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +28,18 @@ router = APIRouter()
 
 
 @router.post("/events", response_model=IngestResponse, status_code=200)
-async def ingest_event(body: IngestRequest) -> IngestResponse:
+async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
     """Ingest a single event into the store and run Sigma evaluation."""
     event_id = str(uuid.uuid4())
     timestamp = body.timestamp if body.timestamp is not None else datetime.now(timezone.utc)
+    endpoint_id = getattr(request.state, "endpoint_id", None) or ""
 
     stored = StoredEvent(
         id=event_id,
         source=body.source,
         event=body.event,
         timestamp=timestamp,
+        endpoint_id=endpoint_id,
     )
     added = await store.add_event(stored)
 
@@ -56,9 +58,11 @@ async def ingest_event(body: IngestRequest) -> IngestResponse:
 
     def _eval() -> list[dict]:
         matched = []
+        # Merge source into the event dict so rules can filter by source prefix.
+        eval_event = {"source": stored.source, **stored.event}
         for rule in rules:
             try:
-                if evaluator.evaluate(rule["parsed_detection"], stored.event):
+                if evaluator.evaluate(rule["parsed_detection"], eval_event):
                     matched.append(rule)
             except Exception:  # noqa: BLE001
                 pass
@@ -72,6 +76,10 @@ async def ingest_event(body: IngestRequest) -> IngestResponse:
         if alert_id:
             alert_ids.append(alert_id)
 
+    # Update endpoint last_seen.
+    if endpoint_id:
+        await pg_endpoints.heartbeat(endpoint_id)
+
     return IngestResponse(
         id=event_id,
         source=body.source,
@@ -82,11 +90,12 @@ async def ingest_event(body: IngestRequest) -> IngestResponse:
 
 
 @router.post("/events/batch", response_model=BatchIngestResponse, status_code=200)
-async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
+async def ingest_batch(request: Request, body: BatchIngestRequest) -> BatchIngestResponse:
     """Ingest a batch of events and run Sigma evaluation on each."""
     ids: list[str] = []
     errors: list[str] = []
     stored_events: list[StoredEvent] = []
+    endpoint_id = getattr(request.state, "endpoint_id", None) or ""
 
     # Fast pass: assign IDs and persist events (IO).
     # Duplicates (add_event returns False) are skipped from Sigma evaluation.
@@ -99,6 +108,7 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
                 source=item.source,
                 event=item.event,
                 timestamp=timestamp,
+                endpoint_id=endpoint_id,
             )
             if await store.add_event(stored):
                 stored_events.append(stored)
@@ -113,9 +123,11 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
     def _eval_batch() -> list[tuple[dict, StoredEvent]]:
         matches: list[tuple[dict, StoredEvent]] = []
         for stored in stored_events:
+            # Merge source into the event dict so rules can filter by source prefix.
+            eval_event = {"source": stored.source, **stored.event}
             for rule in rules:
                 try:
-                    if evaluator.evaluate(rule["parsed_detection"], stored.event):
+                    if evaluator.evaluate(rule["parsed_detection"], eval_event):
                         matches.append((rule, stored))
                 except Exception:  # noqa: BLE001
                     pass
@@ -129,6 +141,10 @@ async def ingest_batch(body: BatchIngestRequest) -> BatchIngestResponse:
         alert_id = await pg_alerts.save_alert(rule, stored)
         if alert_id:
             total_alerts += 1
+
+    # Update endpoint last_seen after batch flush.
+    if endpoint_id:
+        await pg_endpoints.heartbeat(endpoint_id)
 
     return BatchIngestResponse(
         ingested=len(ids),
@@ -144,6 +160,7 @@ async def search_events(
     from_time: Optional[datetime] = Query(default=None, alias="from_time"),
     to_time: Optional[datetime] = Query(default=None, alias="to_time"),
     limit: int = Query(default=100, ge=1, le=10_000),
+    endpoint_id: Optional[str] = Query(default=None),
 ) -> SearchResponse:
     """Search stored events with optional time-range and substring filters."""
     t0 = time.monotonic()
@@ -153,6 +170,7 @@ async def search_events(
         from_time=from_time,
         to_time=to_time,
         limit=limit,
+        endpoint_id=endpoint_id,
     )
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)

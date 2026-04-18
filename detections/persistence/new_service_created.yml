@@ -1,0 +1,45 @@
+title: New Windows Service Installed
+id: f6071293-4567-1234-ef01-234567890123
+status: stable
+description: >
+  Detects installation of a new Windows service via System Event 7045 or
+  Security Event 4697. Services are a common persistence and lateral movement
+  technique (PsExec, Cobalt Strike, custom implants). Pay attention to
+  services with random names, paths in TEMP/AppData, or binaries as PowerShell.
+logsource:
+  product: windows
+  service: system
+detection:
+  # System channel: Event 7045 (new service installed) — always available
+  system_new_service:
+    event_id: 7045
+  # Security channel: Event 4697 (service installed) — requires audit policy
+  sec_new_service:
+    event_id: 4697
+  # Exclude services installed from trusted system and vendor paths.
+  # Legitimate software installs to Program Files or System32 — flag everything else.
+  # Downloads, Temp, AppData, ProgramData installs are high-risk (3 hits in testing from
+  # C:\Users\Estavio\Downloads\vigil.exe — non-standard agent deployment path).
+  filter_trusted_paths:
+    event_data.ImagePath|contains:
+      - "C:\\Windows\\System32\\"
+      - "C:\\Windows\\system32\\"
+      - "C:\\Windows\\SysWOW64\\"
+      - "C:\\Program Files\\"
+      - "C:\\Program Files (x86)\\"
+      - "C:\\WINDOWS\\System32\\"
+      - "C:\\WINDOWS\\SysWOW64\\"
+      - "C:\\WINDOWS\\system32\\"
+      - "system32\\"
+      - "\\SystemRoot\\system32\\"
+      - "\\SystemRoot\\System32\\"
+      - "C:\\Windows\\WindowsApps\\"
+  condition: (system_new_service or sec_new_service) and not filter_trusted_paths
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1543.003
+  - attack.lateral_movement
+falsepositives:
+  - Portable tools run from non-standard paths by administrators
+  - Software that legitimately installs services to ProgramData (add to filter if verified)

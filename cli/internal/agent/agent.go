@@ -50,6 +50,7 @@ type AgentStats struct {
 	EventsFlushed   int64     `json:"events_flushed"`
 	FlushErrors     int64     `json:"flush_errors"`
 	LastFlushAt     time.Time `json:"last_flush_at"`
+	LastEventAt     time.Time `json:"last_event_at"`
 	LastError       string    `json:"last_error"`
 	Channels        []string  `json:"channels"`
 }
@@ -61,6 +62,7 @@ type statusFilePayload struct {
 	EventsFlushed   int64     `json:"events_flushed"`
 	FlushErrors     int64     `json:"flush_errors"`
 	LastFlushAt     time.Time `json:"last_flush_at"`
+	LastEventAt     time.Time `json:"last_event_at"`
 	LastError       string    `json:"last_error"`
 	Channels        []string  `json:"channels"`
 }
@@ -90,13 +92,26 @@ type Config struct {
 	StatusFile    string
 }
 
+// machineVigilDir returns the machine-wide data directory for agent runtime
+// files (status file, bookmarks). Uses ProgramData on Windows so the Windows
+// Service (LocalSystem) and regular user processes share the same path.
+func machineVigilDir() string {
+	dir := os.Getenv("PROGRAMDATA")
+	if dir == "" {
+		dir = os.Getenv("APPDATA")
+	}
+	if dir == "" {
+		dir = filepath.Join(os.Getenv("HOME"), ".vigil")
+	}
+	return filepath.Join(dir, "Vigil")
+}
+
 // DefaultConfig returns a Config pre-populated with sensible defaults.
 func DefaultConfig() Config {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		appData = filepath.Join(os.Getenv("HOME"), ".vigil")
-	}
-	vigilDir := filepath.Join(appData, "Vigil")
+	// Use ProgramData on Windows so that both the Windows Service (LocalSystem)
+	// and regular user processes look at the same runtime directory.
+	// ProgramData is machine-wide and writable by LocalSystem and admins.
+	vigilDir := machineVigilDir()
 	return Config{
 		Channels: []string{
 			"Security",
@@ -125,8 +140,9 @@ type Agent struct {
 	flushErrors     int64
 
 	// protected by mu
-	lastFlushAt time.Time
-	lastError   string
+	lastFlushAt  time.Time
+	lastEventAt  time.Time
+	lastError    string
 
 	startedAt time.Time
 }
@@ -162,6 +178,7 @@ func (a *Agent) Stats() AgentStats {
 		EventsFlushed:   atomic.LoadInt64(&a.eventsFlushed),
 		FlushErrors:     atomic.LoadInt64(&a.flushErrors),
 		LastFlushAt:     lf,
+		LastEventAt:     a.lastEventAt,
 		LastError:       le,
 		Channels:        channels,
 	}
@@ -225,6 +242,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.mu.Lock()
 			a.buffer = append(a.buffer, ev)
 			bufLen := len(a.buffer)
+			a.lastEventAt = time.Now().UTC()
 			a.mu.Unlock()
 			atomic.AddInt64(&a.eventsCollected, 1)
 
@@ -312,6 +330,7 @@ func (a *Agent) writeStatusFile() {
 		EventsFlushed:   stats.EventsFlushed,
 		FlushErrors:     stats.FlushErrors,
 		LastFlushAt:     stats.LastFlushAt,
+		LastEventAt:     stats.LastEventAt,
 		LastError:       stats.LastError,
 		Channels:        stats.Channels,
 	}

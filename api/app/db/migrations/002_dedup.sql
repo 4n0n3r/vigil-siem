@@ -12,12 +12,12 @@
 ALTER TABLE alerts
     ADD COLUMN IF NOT EXISTS source_event_id TEXT NOT NULL DEFAULT '';
 
--- Only create the index if the unique constraint does not already exist.
+-- Only create the index if it does not already exist.
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'uq_alerts_rule_source_event'
+        SELECT 1 FROM pg_indexes
+        WHERE indexname = 'uq_alerts_rule_source_event'
     ) THEN
         CREATE UNIQUE INDEX uq_alerts_rule_source_event
             ON alerts (rule_id, source_event_id)

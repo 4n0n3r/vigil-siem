@@ -1,0 +1,42 @@
+title: UAC Bypass Attempt
+id: a1b2c3d4-5678-9012-abcd-012345678901
+status: stable
+description: >
+  Detects common UAC bypass techniques using auto-elevating LOLBins.
+  These techniques allow a medium-integrity process to spawn a high-integrity
+  process without prompting the user. Common vectors include fodhelper.exe,
+  eventvwr.exe, sdclt.exe, and computerdefaults.exe registry hijacks.
+logsource:
+  product: windows
+  service: security
+detection:
+  # fodhelper.exe / sdclt.exe spawning processes at high integrity
+  sysmon_autoelevate:
+    event_id: 1
+    event_data.ParentImage|contains:
+      - "fodhelper.exe"
+      - "sdclt.exe"
+      - "computerdefaults.exe"
+      - "cmstp.exe"
+      - "eventvwr.exe"
+    event_data.IntegrityLevel: "High"
+  sec_autoelevate:
+    event_id: 4688
+    event_data.ParentProcessName|contains:
+      - "fodhelper.exe"
+      - "sdclt.exe"
+      - "computerdefaults.exe"
+      - "eventvwr.exe"
+  # DLL hijack via Disk Cleanup (cleanmgr) elevation path
+  sysmon_bypasscmd:
+    event_id: 1
+    event_data.Image|endswith: "cmd.exe"
+    event_data.ParentImage|contains: "slui.exe"
+  condition: sysmon_autoelevate or sec_autoelevate or sysmon_bypasscmd
+level: high
+tags:
+  - attack.privilege_escalation
+  - attack.t1548.002
+  - attack.defense_evasion
+falsepositives:
+  - Legitimate administrative automation (rare — fodhelper legitimately spawns nothing)

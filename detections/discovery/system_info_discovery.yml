@@ -1,0 +1,39 @@
+title: System Information Discovery
+id: d4e5f607-8901-2345-def0-345678901234
+status: stable
+description: >
+  Detects execution of common system enumeration commands: systeminfo,
+  whoami, hostname, ipconfig, and netstat. Attackers run these immediately
+  after initial access to understand the environment (OS version, domain
+  membership, network adapters, active connections).
+logsource:
+  product: windows
+  service: security
+detection:
+  sysmon_sysinfo:
+    event_id: 1
+    event_data.Image|contains:
+      - "systeminfo.exe"
+      - "whoami.exe"
+      - "hostname.exe"
+      - "ipconfig.exe"
+      - "netstat.exe"
+      - "arp.exe"
+      - "nslookup.exe"
+  sec_sysinfo:
+    event_id: 4688
+    event_data.NewProcessName|contains:
+      - "systeminfo.exe"
+      - "whoami.exe"
+      - "hostname.exe"
+  condition: sysmon_sysinfo or sec_sysinfo
+level: low
+tags:
+  - attack.discovery
+  - attack.t1082
+  - attack.t1016
+  - attack.t1033
+falsepositives:
+  - IT administrators and help desk staff
+  - Software inventory agents
+  - Legitimate user shell sessions

@@ -1,0 +1,25 @@
+title: New User Account Created
+id: f5061722-6789-0123-f012-123456789012
+status: stable
+description: >
+  Detects creation of a new local or domain user account (Event 4720).
+  Attackers create backdoor accounts for persistent access after an incident.
+  Review the subject (who created it), the new account name, and the time.
+  Accounts created outside business hours or with generic names are high-risk.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4720
+  filter_system:
+    event_data.SubjectUserName|endswith: "$"
+  condition: selection and not filter_system
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1136
+  - attack.t1136.001
+falsepositives:
+  - Authorized IT provisioning of new user accounts
+  - Automated account management (HR system, Active Directory sync)

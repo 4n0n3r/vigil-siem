@@ -12,7 +12,10 @@ vigil status --output json
 ```
 
 Healthy response: `api_status:"ok"`, `clickhouse_status:"ok"`, `postgres_status:"ok"`.
-If `warnings` is non-empty or any status is not `"ok"`, report degraded state before proceeding.
+
+- `clickhouse_status:"ok"` — events are persisted to ClickHouse. Self-hosted ClickHouse is included in the Docker stack (`docker-compose -f api/docker-compose.yml up -d`).
+- `clickhouse_status:"degraded"` — ClickHouse unreachable; events stored in-memory only (lost on restart, capped at 50 000 events). Fix: check `CLICKHOUSE_DSN` and ensure the ClickHouse container is running.
+- If `warnings` is non-empty or any status is not `"ok"`, report degraded state before proceeding.
 
 ---
 
@@ -44,12 +47,17 @@ If `warnings` is non-empty or any status is not `"ok"`, report degraded state be
 | `vigil forensic collect` | — | `ingested`, `counts{}` |
 | `vigil agent start` | `--profile minimal\|standard\|full` `--bookmark-dir` | streaming (no JSON output) |
 | `vigil web start` | `--port <n>` | `status`, `url`, `api_proxy` |
+| `vigil hunt` | `--query <HQL>` `--agg <field>` `--timeline` `--from` `--to` `--limit` | `events[]`, `total`, `aggregations[]`, `timeline[]`, `query_time_ms` |
 
-**Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:`
+| `vigil cloud start` | `--provider aws\|azure\|gcp` `--region` `--bucket` `--subscription` `--storage-account` `--project` | `status`, `source`, `provider` |
+
+**Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:` `cloudtrail:` `azure:` `gcp:` `web:<appname>`
 
 **Sigma modifiers supported:** `contains` `startswith` `endswith` `re`
 
 **Condition syntax:** `AND` `OR` `NOT` `1 of X*` `all of X*`
+
+**HQL syntax (hunt):** `field:value` `field:val*` `field:(v1 OR v2)` `NOT field:val` `AND`/`OR`/`NOT` `(grouping)` bare-text
 
 ---
 
@@ -64,8 +72,11 @@ If `warnings` is non-empty or any status is not `"ok"`, report degraded state be
 | `NOT_FOUND` | Rule, alert, or approval does not exist |
 | `CONFIRM_REQUIRED` | Destructive command needs `--confirm` (human must authorize) |
 | `BATCH_NO_TARGET` | `alerts batch` called with neither `--ids` nor any filter |
+| `INVALID_QUERY` | HQL syntax error — check field names and operators |
 | `UNSUPPORTED_PLATFORM` | Feature not available on current OS |
-| `FORENSIC_PLATFORM_ERROR` | Forensic collection requires Windows |
+| `FORENSIC_PLATFORM_ERROR` | Forensic collection not supported on this platform |
+| `CLOUD_NOT_COMPILED` | Binary not built with `-tags cloud`; run `make build-cloud` |
+| `CLOUD_UNKNOWN_PROVIDER` | `--provider` value not one of: `aws`, `azure`, `gcp` |
 | `COMMAND_ERROR` | Unknown command or flag |
 
 ---
@@ -98,25 +109,57 @@ vigil alerts acknowledge <id> --note "<your findings>" --output json
 
 ---
 
+### `hunt`
+**Trigger:** "hunt for", "find all events where", "pivot on", "show me events with", "threat hunt", "look for credential abuse", "search for attacker"
+
+The full hunt skill reference lives in `skills/hunt.md`. Key patterns:
+
+```bash
+# Brute-force — top source IPs for failed logons
+vigil hunt --query "event_id:4625" --agg event_data.IpAddress --timeline --output json
+
+# Lateral movement — explicit credential logons grouped by target host
+vigil hunt --query "event_id:4648" --agg event_data.TargetServerName --output json
+
+# Suspicious execution — living-off-the-land
+vigil hunt --query "event_data.ProcessName:*mshta* OR event_data.ProcessName:*wscript*" --output json
+
+# Encoded PowerShell
+vigil hunt --query "event_data.CommandLine:*encodedcommand*" --limit 50 --output json
+
+# Pivot on a hostname across all sources
+vigil hunt --query "WORKSTATION-42" --timeline --output json
+
+# Multi-value shorthand
+vigil hunt --query "event_id:(4625 OR 4648 OR 4624)" --agg event_data.IpAddress --output json
+```
+
+**Response fields to analyse:**
+- `aggregations` — top values sorted by count; `count > 20` for a single IP on event 4625 → spray
+- `timeline` — hourly spike indicates brute-force window
+- `events[].event.event_data` — extract `SubjectUserName`, `IpAddress`, `TargetServerName` for context
+
+See `skills/hunt.md` for the full HQL syntax reference, all common field names, and complete hunt playbooks.
+
+---
+
 ### `hunt_brute_force`
 **Trigger:** suspected password attacks / credential abuse
 ```bash
-vigil search --query "4625" --limit 200 --output json
-vigil search --query "4648" --limit 100 --output json
+vigil hunt --query "event_id:4625" --agg event_data.IpAddress --timeline --limit 200 --output json
+vigil hunt --query "event_id:4648" --agg event_data.TargetUserName --output json
 ```
-Group results by `event.event_data.IpAddress` and `event.event_data.TargetUserName`.
-Report top sources and whether patterns suggest spray vs. targeted.
+Group results by `aggregations[].value`. Count > 20 from a single IP → spray. Many distinct `TargetUserName` → spray. Single account many attempts → targeted.
 
 ---
 
 ### `hunt_lateral_movement`
 **Trigger:** suspected lateral movement / pivoting
 ```bash
-vigil search --query "4648" --limit 200 --output json
-vigil search --query "4624" --limit 200 --output json
+vigil hunt --query "event_id:4648" --agg event_data.TargetServerName --timeline --output json
+vigil hunt --query "event_id:4624 AND event_data.LogonType:3" --agg event_data.IpAddress --output json
 ```
-Correlate SubjectUserName, TargetServerName, IpAddress across events.
-Look for the same account authenticating to multiple hosts in a short window.
+Correlate `aggregations[].value` (target servers) vs. timestamp. Same account on many distinct hosts in a short window → lateral movement. Look for `SubjectUserName` common across events.
 
 ---
 
@@ -136,7 +179,7 @@ Do not deploy rules without verifying they fire on a known-good test event.
 ---
 
 ### `forensic_sweep`
-**Trigger:** post-incident artifact collection / "what was running on this host?"
+**Trigger:** post-incident artifact collection / "what was running on this host?" (Windows)
 ```bash
 vigil forensic collect --output json
 vigil search --query "forensic:registry" --limit 50 --output json
@@ -148,12 +191,84 @@ Cross-reference with `forensic:prefetch` timestamps to establish timeline.
 
 ---
 
+### `forensic_sweep_linux`
+**Trigger:** post-incident artifact collection on Linux / "what was running?" / "what's installed?"
+```bash
+vigil forensic collect --output json
+vigil search --query "forensic:cron" --limit 50 --output json
+vigil search --query "forensic:services" --limit 100 --output json
+vigil search --query "forensic:suid" --limit 50 --output json
+vigil search --query "forensic:ssh_keys" --limit 50 --output json
+vigil search --query "forensic:users" --limit 50 --output json
+vigil search --query "forensic:bash_history" --limit 100 --output json
+```
+Look for: unexpected cron entries, unsigned services, unusual SUID binaries, unknown SSH keys,
+accounts with UID 0 besides root, suspicious bash_history commands (curl/wget/base64).
+
+---
+
 ### `build_dashboard`
 **Trigger:** "show me a dashboard" / "visualize the alerts"
 ```bash
 vigil alerts visualize --serve --output json
 ```
 Reports `file` path and `total_alerts`. The browser opens automatically with `--serve`.
+
+---
+
+### `onboard_linux`
+**Trigger:** "set up Linux agent", "add Linux host", "onboard Linux endpoint"
+```bash
+vigil status --output json                                   # confirm API reachable
+vigil agent register --name <hostname> --output json         # save api_key + endpoint_id
+vigil agent start --profile standard --output json           # verify events flow (Ctrl+C)
+vigil search --query "journald:" --limit 5 --output json    # confirm events in SIEM
+```
+Profile guidance: `standard` for most servers (journald + auth.log + /var/log/secure),
+`full` for complete coverage including auditd (requires root).
+
+---
+
+### `onboard_aws`
+**Trigger:** "connect AWS", "add CloudTrail", "ingest CloudTrail"
+```bash
+# Prerequisites: VIGIL_API_URL set, AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY set
+# Binary must be built with: make build-cloud
+vigil status --output json
+vigil cloud start --provider aws --region <region> --bucket <cloudtrail-bucket> --output json
+# Wait ~2 minutes (S3 delivery lag)
+vigil search --query "cloudtrail:" --limit 5 --output json  # verify events
+```
+IAM requirements: `s3:GetObject` + `s3:ListBucket` + `s3:GetBucketLocation` on the CloudTrail bucket.
+See `docs/onboarding/aws.md` for the least-privilege IAM policy JSON.
+
+---
+
+### `onboard_azure`
+**Trigger:** "connect Azure", "add Azure Activity Log", "ingest Azure"
+```bash
+# Prerequisites: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET set
+# Binary must be built with: make build-cloud
+vigil status --output json
+vigil cloud start --provider azure \
+  --subscription <subscription-id> \
+  --storage-account <storage-account-name> \
+  --container insights-activity-logs \
+  --output json
+vigil search --query "azure:activity" --limit 5 --output json
+```
+
+---
+
+### `onboard_gcp`
+**Trigger:** "connect GCP", "add GCP logging", "ingest GCP Cloud Logging"
+```bash
+# Prerequisites: GOOGLE_APPLICATION_CREDENTIALS set to service account JSON path
+# Binary must be built with: make build-cloud
+vigil status --output json
+vigil cloud start --provider gcp --project <project-id> --subscription <sub-name> --output json
+vigil search --query "gcp:logs" --limit 5 --output json
+```
 
 ---
 
@@ -189,10 +304,117 @@ Profile selection guidance: use `minimal` for low-noise environments; `standard`
 | Standard endpoint monitoring | `standard` | Adds Sysmon, PowerShell; recommended default |
 | Active incident response | `full` | All channels; high volume, short retention |
 | Linux server monitoring | `minimal` | journald only, low overhead |
-| Linux with SSH brute force risk | `standard` | journald + auth.log |
-| Linux full audit | `full` | + /var/log/syslog |
+| Linux with SSH brute force risk | `standard` | journald + auth.log + /var/log/secure |
+| Linux full audit | `full` | + /var/log/syslog + auditd |
+| AWS CloudTrail | `aws` | IAM/S3/VPC audit trail, ~2 min delivery lag |
+| Azure Activity Log | `azure` | RBAC changes, admin operations, subscription-wide |
+| GCP Cloud Logging | `gcp` | IAM, compute, storage — Pub/Sub real-time |
+| Web app (nginx/apache/json) | `--web-log` flag | HTTP access log; format: `name:format:path` |
 
 Override channels on Windows: `vigil agent start --channels Security,Microsoft-Windows-Sysmon/Operational`
+
+Web app log monitoring (all platforms): `vigil agent start --web-log "name:format:/path/to/access.log"`
+
+---
+
+### `onboard_webapp`
+**Trigger:** "monitor web app", "add web log", "onboard web application"
+```bash
+# Supported formats: nginx, apache, clf, json
+# One --web-log per application; flag is repeatable.
+vigil status --output json                        # confirm API reachable
+
+vigil agent start \
+  --web-log "myapp:nginx:/var/log/nginx/access.log" \
+  --output json
+# Ctrl+C after a few seconds to verify events flow.
+
+vigil search --query "web:myapp" --limit 5 --output json
+# Confirm events arrive with source prefix "web:myapp".
+
+# Deploy the four web detection rules (run once per environment):
+vigil detections create --file detections/initial_access/web_vulnerability_scanner.yml --output json
+vigil detections create --file detections/initial_access/web_path_traversal.yml --output json
+vigil detections create --file detections/initial_access/web_sql_injection.yml --output json
+vigil detections create --file detections/initial_access/web_sensitive_file_access.yml --output json
+
+# Install agent as a persistent service (Windows) or systemd unit (Linux).
+vigil agent install --output json
+```
+
+Format reference:
+
+| Format | Log type |
+|---|---|
+| `nginx` | Nginx combined log (`$remote_addr … "$request" $status …`) |
+| `apache` | Apache combined log (identical format to nginx) |
+| `clf` | Common Log Format (no referer / UA fields) |
+| `json` | JSON lines — auto-normalises common field names |
+
+---
+
+### `hunt_web_attacks`
+**Trigger:** "investigate web traffic", "look for web attacks", "web threat hunt"
+
+```bash
+# Overview: error distribution by path
+vigil hunt --query "source:web:*" --agg path --output json
+# High 4xx/5xx counts on a path → brute force or probing target.
+
+# Scanner activity
+vigil hunt --query "ua_category:scanner" --agg client_ip --timeline --output json
+# Multiple IPs or sustained timeline → coordinated scan.
+
+# Path traversal attempts
+vigil hunt --query "has_traversal:true" --agg client_ip --output json
+# Same IP across multiple apps → targeted attacker.
+
+# SQL injection attempts
+vigil hunt --query "has_sql_chars:true" --agg path --output json
+# Paths with high hit count → likely automated injection tooling.
+
+# Sensitive file probing
+vigil hunt --query "is_sensitive_path:true" --agg path --timeline --output json
+
+# Pivot on a specific attacker IP
+vigil hunt --query "client_ip:1.2.3.4" --timeline --limit 200 --output json
+
+# Admin path brute force
+vigil hunt --query "is_admin_path:true AND status_class:4xx" --agg client_ip --output json
+
+# POST flood (possible credential stuffing)
+vigil hunt --query "method:POST AND status_class:4xx" --agg path --timeline --output json
+```
+
+**Fields available on every web event** (use in `vigil hunt --query` and alert `event_snapshot`):
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | string | `web:<appname>` — identifies the application |
+| `app_name` | string | Friendly name passed to `--web-log` |
+| `log_format` | string | `nginx` / `apache` / `clf` / `json` |
+| `client_ip` | string | Remote client address |
+| `method` | string | HTTP verb (`GET`, `POST`, …) |
+| `path` | string | URI path, URL-decoded |
+| `query` | string | Query string, URL-decoded |
+| `status_code` | int | HTTP response status |
+| `status_class` | string | `2xx` / `3xx` / `4xx` / `5xx` |
+| `bytes_sent` | int | Response body size in bytes |
+| `user_agent` | string | Full User-Agent header |
+| `ua_category` | string | `browser` / `bot` / `scanner` / `tool` / `unknown` |
+| `referer` | string | HTTP Referer header |
+| `extension` | string | File extension from path (e.g. `php`, `js`) |
+| `path_depth` | int | Number of path segments |
+| `has_traversal` | bool | Path or query contains `../` or encoded variant |
+| `has_sql_chars` | bool | SQL keywords / comment sequences detected |
+| `is_admin_path` | bool | Path matches known admin prefixes |
+| `is_sensitive_path` | bool | Path targets `.env`, `.git`, config files, etc. |
+| `is_error` | bool | `status_code >= 400` |
+
+**Response fields to analyse:**
+- `aggregations[].value` + `aggregations[].count` — top offenders sorted by volume
+- `timeline[]` — hourly distribution; spikes indicate burst activity
+- `events[].event.client_ip` — pivot to `vigil hunt --query "client_ip:<ip>"` for full actor history
 
 ---
 
