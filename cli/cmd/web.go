@@ -73,6 +73,15 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 
 		mux := http.NewServeMux()
 
+		// Resolve API key (flag > env > config).
+		apiKey := globalAPIKey
+		if apiKey == "" {
+			apiKey = os.Getenv("VIGIL_API_KEY")
+		}
+		if apiKey == "" {
+			apiKey = globalConfig.APIKey
+		}
+
 		// /api/* → reverse-proxy to VIGIL_API_URL (strip /api prefix).
 		proxy := httputil.NewSingleHostReverseProxy(target)
 		mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +90,9 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 				r.URL.Path = "/"
 			}
 			r.Host = target.Host
+			if apiKey != "" {
+				r.Header.Set("X-Vigil-Key", apiKey)
+			}
 			proxy.ServeHTTP(w, r)
 		})
 
