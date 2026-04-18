@@ -66,7 +66,7 @@ export function FinalCTA() {
           {/* Docker CTA */}
           <div className="flex flex-wrap justify-center gap-3 mb-12">
             <a
-              href="https://github.com/your-org/vigil"
+              href="https://github.com/vigilsec/vigil"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-bg-elevated border border-border-subtle text-sm text-text-primary hover:border-text-muted transition-all font-display font-medium"

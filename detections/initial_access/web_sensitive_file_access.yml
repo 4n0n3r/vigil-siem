@@ -1,0 +1,28 @@
+title: Sensitive File or Path Access Attempt
+id: d4e5f6a7-0004-4b8c-cd1e-0f9a8b7c6d5e
+status: stable
+description: >
+  Detects HTTP requests targeting sensitive files and paths: environment
+  files (.env), source control (.git, .ssh), configuration files
+  (wp-config.php, web.config, appsettings), backup paths, admin interfaces,
+  and OS-level paths (/etc/passwd, /proc/). Requests to these paths from
+  external clients indicate active information gathering or exploitation.
+  Correlate client_ip across multiple events for scanning patterns.
+logsource:
+  channel: web
+detection:
+  selection:
+    channel: "web"
+    is_sensitive_path: true
+  condition: selection
+level: medium
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.discovery
+  - attack.t1083
+  - attack.t1595.003
+falsepositives:
+  - Internal health checks or monitoring agents probing /.git
+  - Deployment pipelines accessing configuration endpoints
+  - Legitimate admin access to dashboard paths

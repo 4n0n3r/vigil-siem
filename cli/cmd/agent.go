@@ -3,9 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +28,7 @@ var (
 	agentFlushInterval time.Duration
 	agentBookmarkDir   string
 	agentProfile       string
+	agentWebLogs       []string // "name:format:/path/to/access.log"
 )
 
 // ----------------------------------------------------------------------------
@@ -40,6 +44,7 @@ Subcommands:
   start      Start collecting events (foreground)
   install    Install as a Windows Service (auto-start)
   uninstall  Remove the Windows Service
+  restart    Restart the Windows Service (stop + start)
   status     Show agent health and statistics`,
 }
 
@@ -78,10 +83,26 @@ the Windows channel list explicitly.`,
 			cfg.BookmarkDir = agentBookmarkDir
 		}
 
+		// Pass endpoint ID so the agent can send heartbeats.
+		cfg.EndpointID = globalConfig.EndpointID
+
 		a := agent.New(apiClient, cfg)
 
 		// Wire platform-specific collectors (defined in agent_windows.go / agent_linux.go).
 		addPlatformCollectors(a, cfg, agentProfile)
+
+		// Wire web log collectors (cross-platform, one per --web-log entry).
+		for _, spec := range agentWebLogs {
+			parts := strings.SplitN(spec, ":", 3)
+			if len(parts) != 3 {
+				fmt.Fprintf(os.Stderr,
+					`{"error_code":"INVALID_FLAG","message":"--web-log must be name:format:path, got %q"}`+"\n", spec)
+				continue
+			}
+			name, format, logPath := parts[0], parts[1], parts[2]
+			offsetFile := filepath.Join(cfg.BookmarkDir, "weblog_"+name+".offset")
+			a.AddCollector(agent.NewWebLogCollector(name, logPath, agent.WebLogFormat(format), offsetFile))
+		}
 
 		// Detect Windows Service invocation.
 		if agent.RunningAsService() {
@@ -220,6 +241,37 @@ var agentUninstallCmd = &cobra.Command{
 }
 
 // ----------------------------------------------------------------------------
+// vigil agent restart
+// ----------------------------------------------------------------------------
+
+var agentRestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart the Vigil agent Windows Service",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := agent.RestartService(); err != nil {
+			output.PrintError("RESTART_ERROR", "failed to restart Windows Service", err.Error())
+			return nil
+		}
+
+		mode := output.ParseMode(globalOutput)
+		if mode == output.ModeJSON {
+			type result struct {
+				Status      string `json:"status"`
+				ServiceName string `json:"service_name"`
+			}
+			output.PrintJSON(result{Status: "restarted", ServiceName: "VIGILAgent"})
+		} else {
+			t := output.NewTable([]string{"Field", "Value"})
+			t.Append([]string{"Status", "restarted"})
+			t.Append([]string{"Service Name", "VIGILAgent"})
+			t.Render()
+			fmt.Println()
+		}
+		return nil
+	},
+}
+
+// ----------------------------------------------------------------------------
 // vigil agent status
 // ----------------------------------------------------------------------------
 
@@ -325,6 +377,7 @@ automatically with every future request.  The key is shown only once.`,
 			Name        string `json:"name"`
 			Hostname    string `json:"hostname"`
 			OS          string `json:"os"`
+			IPAddress   string `json:"ip_address,omitempty"`
 			EnrollToken string `json:"enroll_token,omitempty"`
 		}
 		type registerResp struct {
@@ -340,10 +393,32 @@ automatically with every future request.  The key is shown only once.`,
 			enrollToken = os.Getenv("VIGIL_ENROLL_TOKEN")
 		}
 
+		// Auto-detect first non-loopback IPv4 address.
+		ipAddress := ""
+		if addrs, err := net.InterfaceAddrs(); err == nil {
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+					continue
+				}
+				if ip4 := ip.To4(); ip4 != nil {
+					ipAddress = ip4.String()
+					break
+				}
+			}
+		}
+
 		body := registerReq{
 			Name:        name,
 			Hostname:    hostname,
 			OS:          runtime.GOOS,
+			IPAddress:   ipAddress,
 			EnrollToken: enrollToken,
 		}
 
@@ -409,6 +484,12 @@ func init() {
 		&agentBookmarkDir, "bookmark-dir", "",
 		"Directory for per-channel bookmark files (default: %%APPDATA%%\\Vigil\\bookmarks\\)",
 	)
+	agentStartCmd.Flags().StringArrayVar(
+		&agentWebLogs, "web-log", nil,
+		`Web access log to monitor, format: name:format:path (repeatable).
+    Formats: nginx, apache, clf, json.
+    Example: --web-log "myapp:nginx:/var/log/nginx/access.log"`,
+	)
 
 	// Flags for vigil agent register.
 	agentRegisterCmd.Flags().StringVar(
@@ -428,6 +509,7 @@ func init() {
 	agentCmd.AddCommand(agentStartCmd)
 	agentCmd.AddCommand(agentInstallCmd)
 	agentCmd.AddCommand(agentUninstallCmd)
+	agentCmd.AddCommand(agentRestartCmd)
 	agentCmd.AddCommand(agentStatusCmd)
 	agentCmd.AddCommand(agentRegisterCmd)
 

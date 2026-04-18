@@ -4,24 +4,24 @@ import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
 
 const tactics = [
-  { name: "Initial Access", covered: true, count: 1 },
-  { name: "Execution", covered: true, count: 3 },
-  { name: "Persistence", covered: true, count: 2 },
-  { name: "Privilege Escalation", covered: true, count: 1 },
-  { name: "Defense Evasion", covered: true, count: 4 },
-  { name: "Credential Access", covered: true, count: 4 },
-  { name: "Discovery", covered: true, count: 1 },
-  { name: "Lateral Movement", covered: true, count: 2 },
-  { name: "Command & Control", covered: true, count: 1 },
-  { name: "Exfiltration", covered: false, count: 0 },
+  { name: "Initial Access", covered: true, count: 5 },
+  { name: "Execution", covered: true, count: 5 },
+  { name: "Persistence", covered: true, count: 5 },
+  { name: "Privilege Escalation", covered: true, count: 2 },
+  { name: "Defense Evasion", covered: true, count: 6 },
+  { name: "Credential Access", covered: true, count: 7 },
+  { name: "Discovery", covered: true, count: 2 },
+  { name: "Lateral Movement", covered: true, count: 4 },
+  { name: "Command & Control", covered: true, count: 4 },
+  { name: "Exfiltration", covered: true, count: 1 },
   { name: "Impact", covered: false, count: 0 },
 ];
 
 const severityData = [
-  { label: "CRITICAL", pct: 15, color: "bg-accent-red", textColor: "text-accent-red", count: 2 },
-  { label: "HIGH", pct: 30, color: "bg-accent-amber", textColor: "text-accent-amber", count: 4 },
-  { label: "MEDIUM", pct: 40, color: "bg-yellow-400", textColor: "text-yellow-400", count: 5 },
-  { label: "LOW", pct: 15, color: "bg-accent-green", textColor: "text-accent-green", count: 2 },
+  { label: "CRITICAL", pct: 15, color: "bg-accent-red", textColor: "text-accent-red", count: 6 },
+  { label: "HIGH", pct: 35, color: "bg-accent-amber", textColor: "text-accent-amber", count: 14 },
+  { label: "MEDIUM", pct: 35, color: "bg-accent-cyan/70", textColor: "text-accent-cyan", count: 15 },
+  { label: "LOW", pct: 15, color: "bg-accent-green", textColor: "text-accent-green", count: 6 },
 ];
 
 export function DetectionCoverage() {
@@ -46,7 +46,7 @@ export function DetectionCoverage() {
             Built-in detections. Write your own in YAML.
           </h2>
           <p className="text-text-muted max-w-xl mx-auto text-sm leading-relaxed">
-            Ships with 13 Sigma rules across 9 MITRE ATT&CK tactics. Add your own
+            Ships with 41 Sigma rules across 10 MITRE ATT&CK tactics. Add your own
             with <code className="font-mono text-accent-cyan bg-bg-elevated px-1 rounded">vigil detections create</code>.
           </p>
         </motion.div>

@@ -51,7 +51,7 @@ Healthy response: `api_status:"ok"`, `clickhouse_status:"ok"`, `postgres_status:
 
 | `vigil cloud start` | `--provider aws\|azure\|gcp` `--region` `--bucket` `--subscription` `--storage-account` `--project` | `status`, `source`, `provider` |
 
-**Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:` `cloudtrail:` `azure:` `gcp:`
+**Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:` `cloudtrail:` `azure:` `gcp:` `web:<appname>`
 
 **Sigma modifiers supported:** `contains` `startswith` `endswith` `re`
 
@@ -309,8 +309,112 @@ Profile selection guidance: use `minimal` for low-noise environments; `standard`
 | AWS CloudTrail | `aws` | IAM/S3/VPC audit trail, ~2 min delivery lag |
 | Azure Activity Log | `azure` | RBAC changes, admin operations, subscription-wide |
 | GCP Cloud Logging | `gcp` | IAM, compute, storage — Pub/Sub real-time |
+| Web app (nginx/apache/json) | `--web-log` flag | HTTP access log; format: `name:format:path` |
 
 Override channels on Windows: `vigil agent start --channels Security,Microsoft-Windows-Sysmon/Operational`
+
+Web app log monitoring (all platforms): `vigil agent start --web-log "name:format:/path/to/access.log"`
+
+---
+
+### `onboard_webapp`
+**Trigger:** "monitor web app", "add web log", "onboard web application"
+```bash
+# Supported formats: nginx, apache, clf, json
+# One --web-log per application; flag is repeatable.
+vigil status --output json                        # confirm API reachable
+
+vigil agent start \
+  --web-log "myapp:nginx:/var/log/nginx/access.log" \
+  --output json
+# Ctrl+C after a few seconds to verify events flow.
+
+vigil search --query "web:myapp" --limit 5 --output json
+# Confirm events arrive with source prefix "web:myapp".
+
+# Deploy the four web detection rules (run once per environment):
+vigil detections create --file detections/initial_access/web_vulnerability_scanner.yml --output json
+vigil detections create --file detections/initial_access/web_path_traversal.yml --output json
+vigil detections create --file detections/initial_access/web_sql_injection.yml --output json
+vigil detections create --file detections/initial_access/web_sensitive_file_access.yml --output json
+
+# Install agent as a persistent service (Windows) or systemd unit (Linux).
+vigil agent install --output json
+```
+
+Format reference:
+
+| Format | Log type |
+|---|---|
+| `nginx` | Nginx combined log (`$remote_addr … "$request" $status …`) |
+| `apache` | Apache combined log (identical format to nginx) |
+| `clf` | Common Log Format (no referer / UA fields) |
+| `json` | JSON lines — auto-normalises common field names |
+
+---
+
+### `hunt_web_attacks`
+**Trigger:** "investigate web traffic", "look for web attacks", "web threat hunt"
+
+```bash
+# Overview: error distribution by path
+vigil hunt --query "source:web:*" --agg path --output json
+# High 4xx/5xx counts on a path → brute force or probing target.
+
+# Scanner activity
+vigil hunt --query "ua_category:scanner" --agg client_ip --timeline --output json
+# Multiple IPs or sustained timeline → coordinated scan.
+
+# Path traversal attempts
+vigil hunt --query "has_traversal:true" --agg client_ip --output json
+# Same IP across multiple apps → targeted attacker.
+
+# SQL injection attempts
+vigil hunt --query "has_sql_chars:true" --agg path --output json
+# Paths with high hit count → likely automated injection tooling.
+
+# Sensitive file probing
+vigil hunt --query "is_sensitive_path:true" --agg path --timeline --output json
+
+# Pivot on a specific attacker IP
+vigil hunt --query "client_ip:1.2.3.4" --timeline --limit 200 --output json
+
+# Admin path brute force
+vigil hunt --query "is_admin_path:true AND status_class:4xx" --agg client_ip --output json
+
+# POST flood (possible credential stuffing)
+vigil hunt --query "method:POST AND status_class:4xx" --agg path --timeline --output json
+```
+
+**Fields available on every web event** (use in `vigil hunt --query` and alert `event_snapshot`):
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | string | `web:<appname>` — identifies the application |
+| `app_name` | string | Friendly name passed to `--web-log` |
+| `log_format` | string | `nginx` / `apache` / `clf` / `json` |
+| `client_ip` | string | Remote client address |
+| `method` | string | HTTP verb (`GET`, `POST`, …) |
+| `path` | string | URI path, URL-decoded |
+| `query` | string | Query string, URL-decoded |
+| `status_code` | int | HTTP response status |
+| `status_class` | string | `2xx` / `3xx` / `4xx` / `5xx` |
+| `bytes_sent` | int | Response body size in bytes |
+| `user_agent` | string | Full User-Agent header |
+| `ua_category` | string | `browser` / `bot` / `scanner` / `tool` / `unknown` |
+| `referer` | string | HTTP Referer header |
+| `extension` | string | File extension from path (e.g. `php`, `js`) |
+| `path_depth` | int | Number of path segments |
+| `has_traversal` | bool | Path or query contains `../` or encoded variant |
+| `has_sql_chars` | bool | SQL keywords / comment sequences detected |
+| `is_admin_path` | bool | Path matches known admin prefixes |
+| `is_sensitive_path` | bool | Path targets `.env`, `.git`, config files, etc. |
+| `is_error` | bool | `status_code >= 400` |
+
+**Response fields to analyse:**
+- `aggregations[].value` + `aggregations[].count` — top offenders sorted by volume
+- `timeline[]` — hourly distribution; spikes indicate burst activity
+- `events[].event.client_ip` — pivot to `vigil hunt --query "client_ip:<ip>"` for full actor history
 
 ---
 

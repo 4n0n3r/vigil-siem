@@ -135,7 +135,7 @@ export function SigmaShowcase() {
                   const colonIdx = line.indexOf('": ');
                   const key = line.substring(0, colonIdx + 2);
                   const val = line.substring(colonIdx + 2);
-                  const valClass = val.includes('"medium"') ? "text-yellow-400" :
+                  const valClass = val.includes('"medium"') ? "text-accent-amber" :
                     val.includes('"open"') ? "text-accent-amber" :
                     val.startsWith(' "') ? "text-accent-green" :
                     val.match(/\d+/) && !val.includes('"') ? "text-accent-amber" :

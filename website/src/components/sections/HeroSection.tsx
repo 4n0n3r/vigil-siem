@@ -87,7 +87,7 @@ export function HeroSection() {
                 <ArrowRight size={15} />
               </a>
               <Link
-                href="https://github.com/your-org/vigil"
+                href="https://github.com/vigilsec/vigil"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border-subtle text-text-muted hover:text-text-primary hover:border-text-muted transition-all duration-200 text-sm font-display font-medium"
