@@ -56,24 +56,36 @@ async def save_alert(rule: dict, stored_event) -> str:
 
     source_event_id = _source_event_id(stored_event)
 
+    endpoint_id = getattr(stored_event, "endpoint_id", None) or None
+
     try:
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO alerts
-                    (rule_id, event_id, severity, event_snapshot, source_event_id)
-                VALUES ($1, $2, $3, $4::jsonb, $5)
-                ON CONFLICT DO NOTHING
-                RETURNING id
+                    (rule_id, event_id, severity, event_snapshot, source_event_id,
+                     endpoint_id, hit_count, first_seen, last_seen)
+                VALUES ($1, $2, $3, $4::jsonb, $5, $6, 1, now(), now())
+                ON CONFLICT (rule_id, source_event_id)
+                    WHERE source_event_id <> ''
+                DO UPDATE
+                    SET hit_count = alerts.hit_count + 1,
+                        last_seen = now()
+                RETURNING id, hit_count
                 """,
                 rule["id"],
                 stored_event.id,
                 rule.get("severity", "medium"),
                 json.dumps(stored_event.event),
                 source_event_id,
+                endpoint_id,
             )
-        # row is None when ON CONFLICT DO NOTHING suppressed the insert.
-        return str(row["id"]) if row else ""
+        if not row:
+            return ""
+        # Only count as a "new" alert on first insert (hit_count == 1).
+        # On subsequent hits we still return the id so callers can log it,
+        # but the caller can inspect hit_count > 1 to know it was a dedup.
+        return str(row["id"])
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             '{"event": "alert_save_error", "rule_id": "%s", "error": "%s"}',

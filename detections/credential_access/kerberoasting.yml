@@ -1,0 +1,65 @@
+title: Kerberoasting — RC4 Service Ticket Request
+id: d4e5f6a7-1234-5678-abcd-890123456789
+status: stable
+description: >
+  Detects Event 4769 (Kerberos Service Ticket Request) where the encryption type
+  is RC4-HMAC (0x17). Kerberoasting requests service tickets for SPN accounts
+  using the weak RC4 cipher so the ticket can be cracked offline. Legitimate
+  modern environments negotiate AES-256 (0x12) or AES-128 (0x11). A burst of
+  4769 events with TicketEncryptionType 0x17 targeting different service accounts
+  is a strong indicator of Kerberoasting.
+  Companion rule: check for 4768 with PreAuthType 0 (AS-REP Roasting).
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4769
+    event_data.TicketEncryptionType: "0x17"
+    # Only service ticket requests (not TGT renewals).
+    event_data.ServiceName|not_endswith: "$"
+  # Exclude machine accounts requesting tickets (end with $) and krbtgt.
+  filter_machine_accounts:
+    event_data.ServiceName|endswith: "$"
+  filter_krbtgt:
+    event_data.ServiceName: "krbtgt"
+  condition: selection and not (filter_machine_accounts or filter_krbtgt)
+level: medium
+tags:
+  - attack.credential_access
+  - attack.t1558.003
+falsepositives:
+  - Legacy applications or services that only support RC4 (e.g., older SQL Server,
+    IIS app pools running under service accounts with weak cipher config)
+  - Environments with Windows Server 2008 DCs that default to RC4
+  - Add known legacy service accounts to a filter_legacy_services list after baselining
+
+---
+# AS-REP Roasting companion — same file covers both techniques
+title: AS-REP Roasting — Kerberos Pre-Authentication Disabled
+id: e5f6a7b8-2345-6789-bcde-901234567890
+status: stable
+description: >
+  Detects Event 4768 where Kerberos pre-authentication is not required
+  (PreAuthType = 0). Accounts with "Do not require Kerberos preauthentication"
+  set respond to AS-REQ without credentials, returning an AS-REP blob that can be
+  cracked offline. Attackers enumerate these accounts and request their AS-REPs
+  without any valid credentials.
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    event_id: 4768
+    event_data.PreAuthType: "0"
+    event_data.Status: "0x0"
+  filter_computer_accounts:
+    event_data.TargetUserName|endswith: "$"
+  condition: selection and not filter_computer_accounts
+level: high
+tags:
+  - attack.credential_access
+  - attack.t1558.004
+falsepositives:
+  - Service accounts intentionally configured without pre-auth (legacy compatibility)
+  - Investigate any account returning here and enforce pre-auth if possible

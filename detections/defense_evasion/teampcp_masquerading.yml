@@ -1,0 +1,62 @@
+title: TeamPCP Supply Chain Attack - Process Masquerading and WAV Steganography
+id: d4e5f6a7-b8c9-4d0e-1f23-teampcp00de01
+status: experimental
+description: >
+  Detects TeamPCP defense evasion techniques. CanisterWorm masquerades its
+  activity as legitimate services, disguising the threat as a PostgreSQL
+  utility called pgmon. The Telnyx wave uses WAV steganography to hide
+  encrypted second-stage payloads within valid audio files (hangup.wav on
+  Windows, ringtone.wav on Linux), allowing the malware to bypass network
+  filters while establishing persistence.
+  Reference: https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  # 1. Process masquerading as pgmon (EID 1)
+  pgmon_masquerade:
+    event_id: 1
+    event_data.Image|endswith: "\\pgmon.exe"
+
+  # 2. Python process with pgmon in command line
+  pgmon_python:
+    event_id: 1
+    event_data.Image|contains: "python"
+    event_data.CommandLine|contains: "pgmon"
+
+  # 3. WAV steganography file creation - Telnyx wave (EID 11)
+  wav_stego_hangup:
+    event_id: 11
+    event_data.TargetFilename|endswith: "\\hangup.wav"
+
+  wav_stego_ringtone:
+    event_id: 11
+    event_data.TargetFilename|endswith: "\\ringtone.wav"
+
+  # 4. Python process writing .wav files (unusual behavior)
+  python_writes_wav:
+    event_id: 11
+    event_data.Image|contains: "python"
+    event_data.TargetFilename|endswith: ".wav"
+
+  # 5. Process named sysmon.py (TeamPCP persistence masquerading as Sysmon)
+  fake_sysmon_py:
+    event_id: 1
+    event_data.CommandLine|contains: "sysmon.py"
+
+  condition: pgmon_masquerade or pgmon_python or wav_stego_hangup or wav_stego_ringtone or python_writes_wav or fake_sysmon_py
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.t1036.005
+  - attack.t1027.003
+  - supply_chain
+  - teampcp
+falsepositives:
+  - Legitimate PostgreSQL monitoring tools named pgmon (uncommon on Windows)
+  - Audio processing applications creating WAV files via Python (correlate with process tree)
+  - The specific filenames hangup.wav and ringtone.wav created by Python are highly suspicious

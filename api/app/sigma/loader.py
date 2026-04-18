@@ -42,7 +42,7 @@ async def load_rules_from_db() -> None:
             new_cache: list[dict] = []
             for row in rows:
                 try:
-                    parsed = _parse_sigma_detection(row["sigma_yaml"])
+                    parsed, channels = _parse_sigma_detection(row["sigma_yaml"])
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         '{"event": "sigma_parse_error", "rule_id": "%s", "error": "%s"}',
@@ -58,6 +58,9 @@ async def load_rules_from_db() -> None:
                         "severity": row["severity"],
                         "sigma_yaml": row["sigma_yaml"],
                         "parsed_detection": parsed,
+                        # P0: channel filter derived from logsource block.
+                        # Empty list = no constraint (match any channel).
+                        "channel_filter": [c.lower() for c in channels],
                     }
                 )
 
@@ -89,10 +92,52 @@ def get_enabled_rules() -> list[dict]:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _parse_sigma_detection(sigma_yaml: str) -> dict:
-    """Parse a Sigma YAML string and return the detection block dict.
+# ---------------------------------------------------------------------------
+# logsource.service → expected Windows channel names
+# ---------------------------------------------------------------------------
 
-    The returned dict always contains a 'condition' key (may be empty string).
+_LOGSOURCE_CHANNEL_MAP: dict[str, list[str]] = {
+    "security":       ["Security"],
+    "system":         ["System"],
+    "application":    ["Application"],
+    "sysmon":         ["Microsoft-Windows-Sysmon/Operational"],
+    "powershell":     [
+        "Microsoft-Windows-PowerShell/Operational",
+        "Windows PowerShell",
+    ],
+    "taskscheduler":  ["Microsoft-Windows-TaskScheduler/Operational"],
+    "wmi":            ["Microsoft-Windows-WMI-Activity/Operational"],
+    "bits-client":    ["Microsoft-Windows-Bits-Client/Operational"],
+    "defender":       ["Microsoft-Windows-Windows Defender/Operational"],
+    "firewall-as":    ["Microsoft-Windows-Windows Firewall With Advanced Security/Firewall"],
+    "dns-server":     ["DNS Server"],
+    "driver-framework": ["Microsoft-Windows-DriverFrameworks-UserMode/Operational"],
+}
+
+
+def channel_filter_for_logsource(logsource: dict) -> list[str]:
+    """Derive expected channel names from a Sigma logsource block.
+
+    Returns an empty list when no channel constraint can be inferred
+    (means: match any channel, backwards-compatible behaviour).
+    """
+    if not isinstance(logsource, dict):
+        return []
+
+    # Explicit channel field takes precedence.
+    if "channel" in logsource:
+        ch = logsource["channel"]
+        return [ch] if isinstance(ch, str) else list(ch)
+
+    service = logsource.get("service", "").lower()
+    return _LOGSOURCE_CHANNEL_MAP.get(service, [])
+
+
+def _parse_sigma_detection(sigma_yaml: str) -> tuple[dict, list[str]]:
+    """Parse a Sigma YAML string.
+
+    Returns ``(detection_block, channel_filter)`` where *channel_filter* is
+    a list of expected channel strings (may be empty = no constraint).
     Raises on parse error — caller should catch.
     """
     doc = yaml.safe_load(sigma_yaml)
@@ -103,4 +148,7 @@ def _parse_sigma_detection(sigma_yaml: str) -> dict:
     if not isinstance(detection, dict):
         raise ValueError("'detection' block is not a mapping")
 
-    return detection
+    logsource = doc.get("logsource", {})
+    channels = channel_filter_for_logsource(logsource)
+
+    return detection, channels

@@ -8,6 +8,7 @@ asyncio thread there is no need for a lock.
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -54,6 +55,7 @@ async def register_endpoint(
     name: str,
     hostname: str = "",
     os_name: str = "",
+    ip_address: str = "",
     metadata: dict[str, Any] | None = None,
 ) -> dict:
     pool = postgres.get_pool()
@@ -66,15 +68,16 @@ async def register_endpoint(
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO endpoints (name, hostname, os, api_key, metadata)
-            VALUES ($1, $2, $3, $4, $5::jsonb)
+            INSERT INTO endpoints (name, hostname, os, ip_address, api_key, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
             RETURNING *
             """,
             name,
             hostname,
             os_name,
+            ip_address,
             api_key,
-            str(meta).replace("'", '"'),  # simple JSON-safe conversion
+            json.dumps(meta),
         )
 
     result = dict(row)
@@ -107,16 +110,17 @@ async def list_endpoints(limit: int = 100, offset: int = 0) -> tuple[list[dict],
     return [dict(r) for r in rows], total
 
 
-async def heartbeat(endpoint_id: str) -> bool:
-    """Update last_seen = now() for the given endpoint. Returns True on success."""
+async def heartbeat(endpoint_id: str, ip_address: str = "") -> bool:
+    """Update last_seen (and optionally ip_address) for the given endpoint."""
     pool = postgres.get_pool()
     if pool is None:
         return False
     async with pool.acquire() as conn:
         result = await conn.execute(
-            "UPDATE endpoints SET last_seen = $1 WHERE id = $2",
+            "UPDATE endpoints SET last_seen = $1, ip_address = $3 WHERE id = $2",
             datetime.now(timezone.utc),
             endpoint_id,
+            ip_address,
         )
     return result == "UPDATE 1"
 
@@ -132,6 +136,55 @@ async def delete_endpoint(endpoint_id: str) -> bool:
         )
     invalidate_cache()
     return result == "DELETE 1"
+
+
+async def get_pending_commands(endpoint_id: str) -> list[str]:
+    """Return a list of pending command names for the given endpoint."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT command FROM endpoint_commands WHERE endpoint_id = $1 AND status = 'pending' ORDER BY created_at",
+            endpoint_id,
+        )
+    return [r["command"] for r in rows]
+
+
+async def mark_commands_done(endpoint_id: str, command: str) -> None:
+    """Mark all pending instances of command for endpoint_id as done."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE endpoint_commands
+            SET status = 'done', completed_at = $1
+            WHERE endpoint_id = $2 AND command = $3 AND status = 'pending'
+            """,
+            datetime.now(timezone.utc),
+            endpoint_id,
+            command,
+        )
+
+
+async def queue_command(endpoint_id: str, command: str) -> dict:
+    """Insert a new pending command for the given endpoint."""
+    pool = postgres.get_pool()
+    if pool is None:
+        raise RuntimeError("PostgreSQL not available")
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO endpoint_commands (endpoint_id, command)
+            VALUES ($1, $2)
+            RETURNING id, endpoint_id, command, status, created_at
+            """,
+            endpoint_id,
+            command,
+        )
+    return dict(row)
 
 
 async def validate_api_key(api_key: str) -> Optional[dict]:

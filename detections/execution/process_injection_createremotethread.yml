@@ -1,0 +1,55 @@
+title: Process Injection via CreateRemoteThread
+id: f3a1b2c4-8901-2345-cdef-234567890123
+status: stable
+description: >
+  Detects Sysmon Event 8 — CreateRemoteThread — where one process injects a
+  thread into another. This is the primary technique used by Cobalt Strike,
+  Metasploit Meterpreter, and most post-exploitation frameworks to migrate into
+  or inject code into a target process. Injecting into svchost.exe, lsass.exe,
+  explorer.exe, or other trusted processes is a strong indicator of malicious
+  activity.
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    event_id: 8
+  # Exclude well-known benign cross-process thread creation.
+  # AV/EDR products routinely inject monitoring threads into every new process.
+  # Visual Studio debugger attaches via CreateRemoteThread.
+  filter_security_products:
+    SourceImage|contains:
+      - "\\MsMpEng.exe"
+      - "\\MsSense.exe"
+      - "\\SenseIR.exe"
+      - "\\CylanceSvc.exe"
+      - "\\CrowdStrike\\"
+      - "\\SentinelOne\\"
+      - "\\Sophos\\"
+      - "\\Carbon Black\\"
+  filter_vs_debugger:
+    SourceImage|contains:
+      - "\\Microsoft Visual Studio\\"
+      - "\\devenv.exe"
+      - "\\msvsmon.exe"
+  # WerFault (Windows Error Reporting) injects into crashed processes.
+  filter_werfault:
+    SourceImage|endswith: "\\WerFault.exe"
+  # High-risk targets: injection into these is almost always malicious.
+  # Alert regardless of source if target is lsass.
+  alert_high_value_targets:
+    TargetImage|endswith:
+      - "\\lsass.exe"
+      - "\\csrss.exe"
+      - "\\winlogon.exe"
+  condition: selection and (alert_high_value_targets or not (filter_security_products or filter_vs_debugger or filter_werfault))
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.privilege_escalation
+  - attack.t1055
+  - attack.t1055.003
+falsepositives:
+  - Security and EDR products injecting monitoring threads (filtered above)
+  - Visual Studio debugger (filtered above)
+  - Some legitimate software using thread injection (instrument and add to filter if confirmed benign)

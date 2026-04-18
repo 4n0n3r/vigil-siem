@@ -16,6 +16,7 @@ logging.basicConfig(
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse
 
@@ -26,6 +27,9 @@ from app.routes import alerts as alerts_router_module
 from app.routes import hunt as hunt_router_module
 from app.routes import endpoints as endpoints_router_module
 from app.routes import tokens as tokens_router_module
+from app.routes import connectors as connectors_router_module
+from app.routes import feed as feed_router_module
+from app.routes import suppressions as suppressions_router_module
 from app.db import clickhouse, postgres, pg_endpoints
 from app.sigma import loader
 
@@ -67,7 +71,8 @@ app = FastAPI(
 # Auth middleware
 # ---------------------------------------------------------------------------
 
-REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
+# Auth is required by default. Disable explicitly with VIGIL_REQUIRE_AUTH=false.
+REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "true").lower() not in ("false", "0", "no")
 
 # Paths that never require an endpoint API key (they have their own auth or are truly open).
 _PUBLIC_PATHS = {"/v1/status", "/v1/endpoints/register"}
@@ -133,14 +138,28 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return JSONResponse(status_code=500, content=body.model_dump())
 
 
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc: Exception) -> JSONResponse:
-    body = ErrorResponse(
-        error_code="not_found",
-        message=f"Route {request.method} {request.url.path} not found.",
-        detail=None,
-    )
-    return JSONResponse(status_code=404, content=body.model_dump())
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    # If a route handler raised HTTPException with a structured dict detail, pass it through.
+    if isinstance(exc.detail, dict):
+        return JSONResponse(status_code=exc.status_code, content=exc.detail)
+    # Route-not-found and other HTTP errors use our ErrorResponse format.
+    if exc.status_code == 404:
+        body = ErrorResponse(
+            error_code="not_found",
+            message=f"Route {request.method} {request.url.path} not found.",
+        )
+    elif exc.status_code == 405:
+        body = ErrorResponse(
+            error_code="method_not_allowed",
+            message=f"Method {request.method} is not allowed on {request.url.path}.",
+        )
+    else:
+        body = ErrorResponse(
+            error_code=f"http_{exc.status_code}",
+            message=str(exc.detail) if exc.detail else f"HTTP {exc.status_code}",
+        )
+    return JSONResponse(status_code=exc.status_code, content=body.model_dump())
 
 
 @app.exception_handler(405)
@@ -178,3 +197,6 @@ app.include_router(alerts_router_module.router, prefix="/v1")
 app.include_router(hunt_router_module.router, prefix="/v1")
 app.include_router(endpoints_router_module.router, prefix="/v1")
 app.include_router(tokens_router_module.router, prefix="/v1")
+app.include_router(connectors_router_module.router)
+app.include_router(feed_router_module.router)
+app.include_router(suppressions_router_module.router, prefix="/v1")

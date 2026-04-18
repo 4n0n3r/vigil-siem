@@ -7,9 +7,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models import (
+    ErrorResponse,
     BatchIngestRequest,
     BatchIngestResponse,
     IngestRequest,
@@ -20,7 +21,7 @@ from app.models import (
 )
 from app import store
 from app.sigma import loader, evaluator
-from app.db import pg_alerts, pg_endpoints
+from app.db import pg_alerts, pg_endpoints, pg_suppressions
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,17 @@ async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
         timestamp=timestamp,
         endpoint_id=endpoint_id,
     )
-    added = await store.add_event(stored)
+    try:
+        added = await store.add_event(stored)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=ErrorResponse(
+                error_code="STORAGE_UNAVAILABLE",
+                message=str(exc),
+                hint="Set CLICKHOUSE_DSN to a reachable ClickHouse instance and restart the API.",
+            ).model_dump(),
+        ) from exc
 
     # Run CPU-bound Sigma evaluation in a thread so the event loop stays free.
     # Skip entirely for duplicate events that were not stored.
@@ -54,13 +65,19 @@ async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
             alert_ids=[],
         )
 
-    rules = loader.get_enabled_rules()
+    rules        = loader.get_enabled_rules()
+    suppressions = await pg_suppressions.get_active_suppressions()
 
     def _eval() -> list[dict]:
         matched = []
-        # Merge source into the event dict so rules can filter by source prefix.
-        eval_event = {"source": stored.source, **stored.event}
+        eval_event   = {"source": stored.source, **stored.event}
+        event_channel = stored.event.get("channel", "").lower()
+
+        # P0: pre-filter rules by channel before running the full detection block.
         for rule in rules:
+            ch_filter = rule.get("channel_filter", [])
+            if ch_filter and event_channel and event_channel not in ch_filter:
+                continue  # wrong channel — skip
             try:
                 if evaluator.evaluate(rule["parsed_detection"], eval_event):
                     matched.append(rule)
@@ -72,6 +89,10 @@ async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
 
     alert_ids: list[str] = []
     for rule in matched_rules:
+        # P1: check global suppressions before persisting the alert.
+        if pg_suppressions.is_suppressed(stored.event, suppressions):
+            await pg_suppressions.record_suppression_hit(stored.event, suppressions)
+            continue
         alert_id = await pg_alerts.save_alert(rule, stored)
         if alert_id:
             alert_ids.append(alert_id)
@@ -113,19 +134,35 @@ async def ingest_batch(request: Request, body: BatchIngestRequest) -> BatchInges
             if await store.add_event(stored):
                 stored_events.append(stored)
                 ids.append(event_id)
+        except RuntimeError as exc:
+            # Storage unavailable — fail the whole batch rather than silently losing data.
+            raise HTTPException(
+                status_code=503,
+                detail=ErrorResponse(
+                    error_code="STORAGE_UNAVAILABLE",
+                    message=str(exc),
+                    hint="Set CLICKHOUSE_DSN to a reachable ClickHouse instance and restart the API.",
+                ).model_dump(),
+            ) from exc
         except Exception as exc:  # noqa: BLE001
             errors.append(str(exc))
 
     # CPU-bound Sigma evaluation runs in a thread pool so the event loop
     # stays free to serve search and other requests concurrently.
-    rules = loader.get_enabled_rules()
+    rules        = loader.get_enabled_rules()
+    suppressions = await pg_suppressions.get_active_suppressions()
 
     def _eval_batch() -> list[tuple[dict, StoredEvent]]:
         matches: list[tuple[dict, StoredEvent]] = []
         for stored in stored_events:
-            # Merge source into the event dict so rules can filter by source prefix.
-            eval_event = {"source": stored.source, **stored.event}
+            eval_event    = {"source": stored.source, **stored.event}
+            event_channel = stored.event.get("channel", "").lower()
+
+            # P0: channel-aware pre-filter.
             for rule in rules:
+                ch_filter = rule.get("channel_filter", [])
+                if ch_filter and event_channel and event_channel not in ch_filter:
+                    continue  # wrong channel — skip
                 try:
                     if evaluator.evaluate(rule["parsed_detection"], eval_event):
                         matches.append((rule, stored))
@@ -138,6 +175,10 @@ async def ingest_batch(request: Request, body: BatchIngestRequest) -> BatchInges
     # Save alerts back on the event loop (async IO).
     total_alerts = 0
     for rule, stored in matches:
+        # P1: suppression check before persisting.
+        if pg_suppressions.is_suppressed(stored.event, suppressions):
+            await pg_suppressions.record_suppression_hit(stored.event, suppressions)
+            continue
         alert_id = await pg_alerts.save_alert(rule, stored)
         if alert_id:
             total_alerts += 1

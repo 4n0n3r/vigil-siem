@@ -1,0 +1,58 @@
+title: TeamPCP Supply Chain Attack - Python .pth Persistence and Backdoor Files
+id: d4e5f6a7-b8c9-4d0e-1f23-teampcp00pe01
+status: experimental
+description: >
+  Detects TeamPCP persistence mechanisms. The LiteLLM wave introduced a .pth
+  file (litellm_init.pth) in Python site-packages. Due to the Python
+  interpreter automatically processing .pth files during startup, the malware
+  executes every time any Python process is initialized, regardless of whether
+  LiteLLM is imported. Also detects creation of the sysmon.py backdoor file
+  written to /host/root/.config/sysmon/ or equivalent Windows paths.
+  Reference: https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  # 1. .pth file created in Python site-packages (EID 11) - auto-executed on Python startup
+  pth_file_injection:
+    event_id: 11
+    event_data.TargetFilename|contains: "site-packages"
+    event_data.TargetFilename|endswith: ".pth"
+
+  # 2. Specific litellm_init.pth file creation
+  litellm_pth:
+    event_id: 11
+    event_data.TargetFilename|contains: "litellm_init.pth"
+
+  # 3. sysmon.py backdoor file creation (masquerading as Sysmon config)
+  sysmon_py_backdoor:
+    event_id: 11
+    event_data.TargetFilename|contains:
+      - "\\.config\\sysmon\\sysmon.py"
+      - "\\sysmon\\sysmon.py"
+
+  # 4. TeamPCP kamikaze.sh or kube.py payload files
+  teampcp_payload_scripts:
+    event_id: 11
+    event_data.TargetFilename|endswith:
+      - "\\kamikaze.sh"
+      - "\\kube.py"
+      - "\\prop.py"
+      - "\\proxy_server.py"
+
+  condition: pth_file_injection or litellm_pth or sysmon_py_backdoor or teampcp_payload_scripts
+level: high
+tags:
+  - attack.persistence
+  - attack.t1546.016
+  - attack.t1059.006
+  - supply_chain
+  - teampcp
+falsepositives:
+  - Legitimate Python package installations creating .pth files in site-packages (common during pip install)
+  - Filter known legitimate .pth files (e.g., easy-install.pth, setuptools.pth) if noisy
+  - The specific filenames kamikaze.sh, kube.py, litellm_init.pth are unique to TeamPCP

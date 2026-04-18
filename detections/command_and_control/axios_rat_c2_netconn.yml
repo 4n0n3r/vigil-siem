@@ -1,0 +1,28 @@
+title: Axios RAT - Network Connection to C2 IP
+id: a1c30e72-7f44-4b8a-0005-6e3f8a2d9c01
+status: experimental
+description: >
+  Detects outbound network connections to 142.11.206.73, the IP address
+  hosting the axios npm supply chain RAT C2 server (sfrclak.com:8000).
+  This fires on Sysmon Event ID 3 (Network Connection) and indicates the
+  RAT payload is actively communicating with the attacker's infrastructure.
+  Reference: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    event_id: 3
+    event_data.DestinationIp: "142.11.206.73"
+  condition: selection
+level: critical
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+  - supply_chain
+falsepositives:
+  - None expected — this is a known malicious C2 IP

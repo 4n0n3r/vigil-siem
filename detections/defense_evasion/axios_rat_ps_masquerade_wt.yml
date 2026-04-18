@@ -1,0 +1,28 @@
+title: Axios RAT - PowerShell Masquerading as wt.exe in ProgramData
+id: a1c30e72-7f44-4b8a-0003-6e3f8a2d9c01
+status: experimental
+description: >
+  Detects execution of wt.exe from %PROGRAMDATA%, a persistence artifact of
+  the axios npm supply chain RAT. The dropper copies powershell.exe to
+  C:\ProgramData\wt.exe to disguise it as Windows Terminal and provide a
+  persistent interpreter for the RAT payload.
+  Reference: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    event_id: 1
+    event_data.Image|contains: "\\ProgramData\\wt.exe"
+  condition: selection
+level: critical
+tags:
+  - attack.defense_evasion
+  - attack.t1036.003
+  - supply_chain
+falsepositives:
+  - Windows Terminal (wt.exe) normally lives in WindowsApps, not ProgramData

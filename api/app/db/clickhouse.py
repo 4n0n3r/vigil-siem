@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _ch_client = None   # clickhouse_connect.Client | None — used only for init/DDL
 _ch_params: dict | None = None  # connection params for per-call clients
+_ch_configured: bool = False    # True if CLICKHOUSE_DSN was set (regardless of connectivity)
 
 _VIGIL_EVENTS_DDL = """
 CREATE TABLE IF NOT EXISTS vigil_events (
@@ -46,12 +47,14 @@ async def init_clickhouse() -> None:
     Called once from the FastAPI lifespan context manager.
     Logs a warning and returns cleanly if anything goes wrong.
     """
-    global _ch_client, _ch_params
+    global _ch_client, _ch_params, _ch_configured
 
     dsn = os.environ.get("CLICKHOUSE_DSN", "").strip()
     if not dsn:
-        _warn("CLICKHOUSE_DSN is not set — ClickHouse disabled, using in-memory fallback")
+        _warn("CLICKHOUSE_DSN is not set — event ingest will return 503 until ClickHouse is configured")
         return
+
+    _ch_configured = True
 
     try:
         import clickhouse_connect  # noqa: PLC0415  (lazy import)
@@ -123,10 +126,22 @@ def get_client():
     return clickhouse_connect.get_client(**_ch_params)
 
 
+def is_configured() -> bool:
+    """True if CLICKHOUSE_DSN was set at startup (regardless of connectivity)."""
+    return _ch_configured
+
+
+def is_available() -> bool:
+    """True if ClickHouse connected successfully and is ready to accept queries."""
+    return _ch_params is not None
+
+
 def get_warnings() -> list[str]:
     """Return a list of human-readable warnings about ClickHouse availability."""
-    if _ch_params is None:
-        return ["ClickHouse not configured"]
+    if not _ch_configured:
+        return ["ClickHouse not configured — set CLICKHOUSE_DSN to enable event storage"]
+    if not is_available():
+        return ["ClickHouse configured but unavailable — check connectivity and credentials"]
     return []
 
 

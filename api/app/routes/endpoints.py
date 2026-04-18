@@ -15,6 +15,8 @@ from fastapi.responses import JSONResponse
 from app.db import postgres, pg_endpoints, pg_tokens
 from app.models import (
     Endpoint,
+    EndpointCommandRequest,
+    EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
     EndpointListResponse,
     EndpointRegisterRequest,
@@ -59,6 +61,7 @@ def _row_to_endpoint(row: dict) -> Endpoint:
         name=row["name"],
         hostname=row.get("hostname", ""),
         os=row.get("os", ""),
+        ip_address=row.get("ip_address", ""),
         last_seen=row.get("last_seen"),
         created_at=row["created_at"],
         metadata=meta,
@@ -104,6 +107,7 @@ async def register_endpoint(body: EndpointRegisterRequest):
             name=body.name,
             hostname=body.hostname,
             os_name=body.os,
+            ip_address=body.ip_address,
             metadata=body.metadata,
         )
     except Exception as exc:  # noqa: BLE001
@@ -182,16 +186,52 @@ async def delete_endpoint(endpoint_id: str):
 # ---------------------------------------------------------------------------
 
 @router.patch("/endpoints/{endpoint_id}/heartbeat", response_model=EndpointHeartbeatResponse)
-async def endpoint_heartbeat(endpoint_id: str):
+async def endpoint_heartbeat(endpoint_id: str, body: EndpointHeartbeatRequest = None):
     pool = postgres.get_pool()
     if pool is None:
         return _db_unavailable()
 
-    ok = await pg_endpoints.heartbeat(endpoint_id)
+    ip_address = body.ip_address if body else ""
+    ok = await pg_endpoints.heartbeat(endpoint_id, ip_address=ip_address)
     if not ok:
         return _not_found(endpoint_id)
+
+    # Fetch pending commands and deliver them exactly once.
+    pending = await pg_endpoints.get_pending_commands(endpoint_id)
+    if pending:
+        for cmd in set(pending):
+            await pg_endpoints.mark_commands_done(endpoint_id, cmd)
 
     return EndpointHeartbeatResponse(
         id=endpoint_id,
         last_seen=datetime.now(timezone.utc),
+        pending_commands=pending,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /endpoints/{id}/commands
+# ---------------------------------------------------------------------------
+
+@router.post("/endpoints/{endpoint_id}/commands", status_code=202)
+async def queue_command(endpoint_id: str, body: EndpointCommandRequest):
+    """Queue a command for delivery to the agent on next heartbeat."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return _db_unavailable()
+
+    row = await pg_endpoints.get_endpoint_by_id(endpoint_id)
+    if row is None:
+        return _not_found(endpoint_id)
+
+    try:
+        cmd_row = await pg_endpoints.queue_command(endpoint_id, body.command)
+    except Exception as exc:  # noqa: BLE001
+        err = ErrorResponse(
+            error_code="COMMAND_QUEUE_ERROR",
+            message="Failed to queue command.",
+            detail=str(exc),
+        )
+        return JSONResponse(status_code=500, content=err.model_dump())
+
+    return {"id": str(cmd_row["id"]), "command": body.command, "status": "queued"}

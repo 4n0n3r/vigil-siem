@@ -1,0 +1,69 @@
+title: TeamPCP Supply Chain Attack - C2 Infrastructure Indicators
+id: d4e5f6a7-b8c9-4d0e-1f23-teampcp00c201
+status: experimental
+description: >
+  Detects network and DNS indicators associated with TeamPCP supply chain
+  attack infrastructure. TeamPCP compromised Aqua Security Trivy, Checkmarx
+  KICS, BerriAI LiteLLM, and Telnyx Python SDK to exfiltrate cloud credentials,
+  SSH keys, and Kubernetes secrets. C2 domains are typosquats of legitimate
+  vendor domains. Also detects use of port 666, which is TeamPCP's signature
+  exploitation port, and Cloudflare tunnel domains used for C2 tunneling.
+  Reference: https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  # 1. DNS queries to known TeamPCP C2 domains (Sysmon EID 22)
+  c2_dns_primary:
+    event_id: 22
+    event_data.QueryName|contains:
+      - "scan.aquasecurtiy.org"
+      - "checkmarx.zone"
+      - "models.litellm.cloud"
+  c2_dns_icp_canister:
+    event_id: 22
+    event_data.QueryName|contains: "tdtqy-oyaaa-aaaae-af2dq-cai.raw.icp0.io"
+  c2_dns_cloudflare_tunnels:
+    event_id: 22
+    event_data.QueryName|contains:
+      - "championships-peoples-point-cassette.trycloudflare.com"
+      - "create-sensitivity-grad-sequence.trycloudflare.com"
+      - "investigation-launches-hearings-copying.trycloudflare.com"
+      - "plug-tab-protective-relay.trycloudflare.com"
+      - "souls-entire-defined-routes.trycloudflare.com"
+
+  # 2. Network connections to known TeamPCP C2 IPs (Sysmon EID 3)
+  c2_network_ips:
+    event_id: 3
+    event_data.Initiated: "true"
+    event_data.DestinationIp:
+      - "23.142.184.129"
+      - "45.148.10.212"
+      - "63.251.162.11"
+      - "83.142.209.11"
+      - "83.142.209.203"
+      - "195.5.171.242"
+      - "209.34.235.18"
+      - "212.71.124.188"
+
+  # 3. TeamPCP signature exploitation port (Sysmon EID 3)
+  c2_port_666:
+    event_id: 3
+    event_data.Initiated: "true"
+    event_data.DestinationPort: 666
+
+  condition: c2_dns_primary or c2_dns_icp_canister or c2_dns_cloudflare_tunnels or c2_network_ips or c2_port_666
+level: critical
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+  - attack.t1568.002
+  - supply_chain
+  - teampcp
+falsepositives:
+  - The C2 domains and IPs are highly specific to TeamPCP infrastructure and should not false positive
+  - Port 666 is uncommon but could be used by some legacy applications (doom game servers); correlate with process context

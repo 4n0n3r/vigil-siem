@@ -23,10 +23,16 @@ detection:
       - "save hklm\\security"
       - "copy HKLM\\SAM"
       - "copy HKLM\\SYSTEM"
+      - "copy HKLM\\SECURITY"
       - "copy hklm\\sam"
       - "copy hklm\\system"
+      - "copy hklm\\security"
       - "export HKLM\\SAM"
       - "export HKLM\\SYSTEM"
+      - "export HKLM\\SECURITY"
+      - "export hklm\\sam"
+      - "export hklm\\system"
+      - "export hklm\\security"
   sec_reg_dump:
     event_id: 4688
     event_data.NewProcessName|contains: "reg.exe"
@@ -36,8 +42,19 @@ detection:
       - "save HKLM\\SECURITY"
       - "save hklm\\sam"
       - "save hklm\\system"
+      - "save hklm\\security"
       - "copy HKLM\\SAM"
+      - "copy HKLM\\SYSTEM"
+      - "copy HKLM\\SECURITY"
       - "copy hklm\\sam"
+      - "copy hklm\\system"
+      - "copy hklm\\security"
+      - "export HKLM\\SAM"
+      - "export HKLM\\SYSTEM"
+      - "export HKLM\\SECURITY"
+      - "export hklm\\sam"
+      - "export hklm\\system"
+      - "export hklm\\security"
   condition: sysmon_reg_dump or sec_reg_dump
 level: critical
 tags:

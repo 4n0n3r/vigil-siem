@@ -1,0 +1,66 @@
+title: Registry Hive Dump via Remote Command Execution
+id: c3d4e5f6-7890-4a5b-bcde-f01234567890
+status: stable
+description: >
+  Detects SAM/SYSTEM/SECURITY registry hive dump when executed through
+  remote command wrappers (WinRM, PsExec). When reg.exe is invoked via
+  WinRM, the process tree is wsmprovhost.exe → cmd.exe /C reg save...
+  Sysmon may capture cmd.exe but not the child reg.exe depending on config.
+  This rule matches the attack command in cmd.exe's own CommandLine and
+  in ParentCommandLine of any child process, covering both scenarios.
+  Also detects esentutl.exe and ntdsutil.exe which can copy locked hives.
+logsource:
+  product: windows
+  service: security
+detection:
+  # cmd.exe /C wrapping reg save (WinRM execution path)
+  sysmon_cmd_reg:
+    event_id: 1
+    event_data.Image|contains: "cmd.exe"
+    event_data.CommandLine|contains:
+      - "reg save HKLM\\SAM"
+      - "reg save HKLM\\SYSTEM"
+      - "reg save HKLM\\SECURITY"
+      - "reg save hklm\\sam"
+      - "reg save hklm\\system"
+      - "reg save hklm\\security"
+      - "reg.exe save HKLM\\SAM"
+      - "reg.exe save HKLM\\SYSTEM"
+      - "reg.exe save HKLM\\SECURITY"
+  # Any process whose parent command line contains the dump command
+  sysmon_parent_cmdline:
+    event_id: 1
+    event_data.ParentCommandLine|contains:
+      - "reg save HKLM\\SAM"
+      - "reg save HKLM\\SYSTEM"
+      - "reg save HKLM\\SECURITY"
+      - "reg save hklm\\sam"
+      - "reg save hklm\\system"
+      - "reg save hklm\\security"
+  # Security 4688: catch in any command line (including cmd.exe wrappers)
+  sec_any_cmdline:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "reg save HKLM\\SAM"
+      - "reg save HKLM\\SYSTEM"
+      - "reg save HKLM\\SECURITY"
+      - "reg save hklm\\sam"
+      - "reg save hklm\\system"
+      - "reg save hklm\\security"
+  # esentutl.exe copying locked hive files (alternative tool)
+  sysmon_esentutl:
+    event_id: 1
+    event_data.Image|contains: "esentutl.exe"
+    event_data.CommandLine|contains:
+      - "\\config\\SAM"
+      - "\\config\\SYSTEM"
+      - "\\config\\SECURITY"
+  condition: sysmon_cmd_reg or sysmon_parent_cmdline or sec_any_cmdline or sysmon_esentutl
+level: critical
+tags:
+  - attack.credential_access
+  - attack.t1003.002
+  - attack.t1003.004
+  - attack.t1003.005
+falsepositives:
+  - Backup software performing registry exports (very rare for SAM/SYSTEM)

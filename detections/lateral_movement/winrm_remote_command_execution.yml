@@ -1,0 +1,48 @@
+title: WinRM Remote Command Execution
+id: f6071829-5985-4a5b-ef01-234567890123
+status: stable
+description: >
+  Detects command execution via Windows Remote Management (WinRM).
+  When commands are executed remotely via WinRM, the process chain is:
+  svchost.exe → wsmprovhost.exe → cmd.exe /C <command>
+  This rule catches wsmprovhost.exe spawning shell processes, which is
+  the definitive indicator of WinRM-based remote execution. Every attack
+  in our testing that evaded process-specific rules was executed through
+  this WinRM chain — making this a high-value catch-all detection.
+  Note: legitimate WinRM usage (SCCM, DSC, remote management) will also
+  trigger this rule. Correlate with source IP and user context.
+logsource:
+  product: windows
+  service: security
+detection:
+  # Sysmon: wsmprovhost.exe spawning cmd.exe or powershell.exe
+  sysmon_wsmprovhost_child:
+    event_id: 1
+    event_data.ParentImage|contains: "wsmprovhost.exe"
+    event_data.Image|contains:
+      - "cmd.exe"
+      - "powershell.exe"
+      - "pwsh.exe"
+      - "cscript.exe"
+      - "wscript.exe"
+  # Security 4688: process creation with wsmprovhost as parent
+  sec_wsmprovhost_child:
+    event_id: 4688
+    event_data.ParentProcessName|contains: "wsmprovhost.exe"
+  # WinRM operational log: session created (always logged)
+  winrm_session:
+    channel|contains: "Microsoft-Windows-WinRM"
+    event_id:
+      - 6
+      - 91
+  condition: sysmon_wsmprovhost_child or sec_wsmprovhost_child or winrm_session
+level: medium
+tags:
+  - attack.lateral_movement
+  - attack.execution
+  - attack.t1021.006
+falsepositives:
+  - SCCM/MEMCM remote management
+  - PowerShell DSC (Desired State Configuration) pull/push
+  - Legitimate IT remote administration via WinRM
+  - Monitoring agents using WinRM for data collection

@@ -1,0 +1,49 @@
+title: TeamPCP Supply Chain Attack - Data Staging File Artifacts
+id: d4e5f6a7-b8c9-4d0e-1f23-teampcp00ex02
+status: experimental
+description: >
+  Detects file creation artifacts associated with TeamPCP data staging and
+  exfiltration. The attack creates specific files for AES-256-CBC session key
+  encryption (session.key, session.key.enc), encrypted payloads (payload.enc),
+  compressed archives (tpcp.tar.gz), and PostgreSQL-masquerading state files
+  (pglog, .pg_state). These files are created by python or openssl processes
+  as part of the multi-stage credential exfiltration pipeline.
+  Reference: https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  # Sysmon EID 11 (FileCreate) for TeamPCP staging files
+  staging_files_python:
+    event_id: 11
+    event_data.Image|contains:
+      - "python"
+      - "openssl"
+    event_data.TargetFilename|contains:
+      - "session.key"
+      - "payload.enc"
+      - "session.key.enc"
+      - "tpcp.tar.gz"
+
+  # PostgreSQL-masquerading persistence/state files
+  pgmon_state_files:
+    event_id: 11
+    event_data.TargetFilename|contains:
+      - "\\pglog"
+      - "\\.pg_state"
+
+  condition: staging_files_python or pgmon_state_files
+level: high
+tags:
+  - attack.exfiltration
+  - attack.t1074.001
+  - attack.collection
+  - supply_chain
+  - teampcp
+falsepositives:
+  - Legitimate PostgreSQL log files may match pglog but would not be created by python/openssl
+  - The combination of session.key + payload.enc + tpcp.tar.gz is unique to TeamPCP

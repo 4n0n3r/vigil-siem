@@ -1,0 +1,62 @@
+title: Shadow Copy Deletion via Remote Execution
+id: d4e5f607-1490-4a5b-cdef-012345678901
+status: stable
+description: >
+  Detects shadow copy deletion when executed through remote command wrappers
+  (WinRM, PsExec). Supplements the existing shadow_copy_deletion rule by
+  matching the attack command in cmd.exe's own CommandLine (the WinRM
+  execution path: wsmprovhost.exe → cmd.exe /C vssadmin delete shadows...).
+  Also detects bcdedit /set {default} recoveryenabled No and
+  wbadmin delete catalog which are commonly chained with shadow deletion.
+logsource:
+  product: windows
+  service: security
+detection:
+  # cmd.exe wrapping vssadmin (WinRM path)
+  sysmon_cmd_vssadmin:
+    event_id: 1
+    event_data.Image|contains: "cmd.exe"
+    event_data.CommandLine|contains:
+      - "vssadmin delete shadows"
+      - "vssadmin Delete Shadows"
+      - "vssadmin.exe delete shadows"
+  # cmd.exe wrapping wmic shadowcopy (WinRM path)
+  sysmon_cmd_wmic_shadow:
+    event_id: 1
+    event_data.Image|contains: "cmd.exe"
+    event_data.CommandLine|contains:
+      - "shadowcopy delete"
+      - "Win32_ShadowCopy"
+  # ParentCommandLine matching (child process spawned by the wrapper)
+  sysmon_parent_vss:
+    event_id: 1
+    event_data.ParentCommandLine|contains:
+      - "vssadmin delete shadows"
+      - "shadowcopy delete"
+  # Security 4688: any command line with shadow deletion commands
+  sec_shadow_delete:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "vssadmin delete shadows"
+      - "shadowcopy delete"
+      - "Win32_ShadowCopy"
+  # Recovery disabling (commonly paired with shadow deletion)
+  sysmon_bcdedit_recovery:
+    event_id: 1
+    event_data.CommandLine|contains:
+      - "bcdedit /set {default} recoveryenabled No"
+      - "bcdedit.exe /set {default} recoveryenabled No"
+  # wbadmin catalog deletion
+  sysmon_wbadmin:
+    event_id: 1
+    event_data.CommandLine|contains:
+      - "wbadmin delete catalog"
+      - "wbadmin delete systemstatebackup"
+  condition: sysmon_cmd_vssadmin or sysmon_cmd_wmic_shadow or sysmon_parent_vss or sec_shadow_delete or sysmon_bcdedit_recovery or sysmon_wbadmin
+level: critical
+tags:
+  - attack.impact
+  - attack.t1490
+  - attack.defense_evasion
+falsepositives:
+  - Backup software reclaiming disk space (rare, verify with backup team)

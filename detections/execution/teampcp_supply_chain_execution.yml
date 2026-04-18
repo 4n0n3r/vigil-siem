@@ -1,0 +1,75 @@
+title: TeamPCP Supply Chain Attack - Process Execution Artifacts
+id: d4e5f6a7-b8c9-4d0e-1f23-teampcp00ex01
+status: experimental
+description: >
+  Detects process execution patterns characteristic of TeamPCP supply chain
+  payloads. The attack uses Python to execute subprocesses with hardcoded
+  command parameters for encryption (openssl), archiving (tar), downloading
+  (curl), and persistence (systemctl). Also detects the distinctive base64
+  decode execution pattern used in the LiteLLM .pth payload stage.
+  Reference: https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://unit42.paloaltonetworks.com/teampcp-supply-chain-attacks/
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  # 1. Python-spawned openssl with TeamPCP session key encryption patterns
+  openssl_session_key:
+    event_id: 1
+    event_data.ParentImage|contains: "python"
+    event_data.Image|contains: "openssl"
+    event_data.CommandLine|contains:
+      - "session.key"
+      - "-inkey p -in session"
+      - "payload.enc"
+      - "session.key.enc"
+
+  # 2. Python-spawned openssl generating random session keys
+  openssl_keygen:
+    event_id: 1
+    event_data.ParentImage|contains: "python"
+    event_data.Image|contains: "openssl"
+    event_data.CommandLine|contains: "openssl rand -out"
+
+  # 3. Python-spawned curl contacting TeamPCP C2 domains
+  curl_c2_contact:
+    event_id: 1
+    event_data.CommandLine|contains:
+      - "models.litellm.cloud"
+      - "scan.aquasecurtiy.org"
+      - "checkmarx.zone"
+
+  # 4. Python-spawned tar creating tpcp archive
+  tar_tpcp_archive:
+    event_id: 1
+    event_data.ParentImage|contains: "python"
+    event_data.Image|contains: "tar"
+    event_data.CommandLine|contains: "tpcp.tar.gz"
+
+  # 5. Python base64 decode execution pattern (LiteLLM .pth payload)
+  python_base64_exec:
+    event_id: 1
+    event_data.Image|contains: "python"
+    event_data.CommandLine|contains: "import base64; exec(base64.b64decode("
+
+  # 6. Python spawning systemctl for persistence (sysmon.service)
+  python_systemctl_persist:
+    event_id: 1
+    event_data.ParentImage|contains: "python"
+    event_data.Image|contains: "systemctl"
+    event_data.CommandLine|contains: "sysmon.service"
+
+  condition: openssl_session_key or openssl_keygen or curl_c2_contact or tar_tpcp_archive or python_base64_exec or python_systemctl_persist
+level: critical
+tags:
+  - attack.execution
+  - attack.t1059.006
+  - attack.t1059.004
+  - supply_chain
+  - teampcp
+falsepositives:
+  - The command line patterns (tpcp.tar.gz, session.key.enc, models.litellm.cloud) are highly specific to TeamPCP
+  - Generic base64 decode in Python is common but combined with exec() is suspicious

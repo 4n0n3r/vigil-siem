@@ -13,6 +13,10 @@ logsource:
   service: security
 detection:
   selection:
+    # IMPORTANT: scope to Security channel only. Event ID 4625 also appears in
+    # the Application channel for unrelated events (e.g. EventSystem config),
+    # causing false positives if channel is not constrained.
+    channel: "Security"
     event_id: 4625
     event_data.LogonType:
       - "4"

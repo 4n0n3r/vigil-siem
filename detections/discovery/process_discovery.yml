@@ -22,11 +22,37 @@ detection:
       - "Get-Process"
       - "get-process"
       # NOTE: "ps " removed — too broad, matches any parameter starting with 'ps' (e.g. PSModulePath)
-  condition: sysmon_tasklist or sec_tasklist or sysmon_ps_getprocess
+  # Filter: IDE/editor detection routines — dev tools (VS Code, Cursor, Windsurf,
+  # JetBrains) regularly run `tasklist | findstr` to check which IDE is active.
+  # ParentCommandLine pattern is stable across tools and safe to exclude broadly.
+  filter_ide_detection:
+    event_data.ParentCommandLine|contains:
+      - "findstr /I"
+    event_data.ParentCommandLine|contains:
+      - "Code.exe"
+      - "Cursor.exe"
+      - "Windsurf.exe"
+      - "idea64.exe"
+      - "pycharm64.exe"
+      - "webstorm64.exe"
+      - "rider64.exe"
+      - "studio64.exe"
+      - "fleet.exe"
+  # Filter: monitoring and inventory agents that enumerate processes on a schedule
+  filter_monitoring_agents:
+    event_data.ParentImage|contains:
+      - "\\Microsoft Monitoring Agent\\"
+      - "\\Azure Monitor\\"
+      - "\\CrowdStrike\\"
+      - "\\SentinelOne\\"
+      - "\\Qualys\\"
+      - "\\Tanium\\"
+      - "\\vigil"
+  condition: (sysmon_tasklist or sec_tasklist or sysmon_ps_getprocess) and not filter_ide_detection and not filter_monitoring_agents
 level: low
 tags:
   - attack.discovery
   - attack.t1057
 falsepositives:
-  - IT administrators and monitoring scripts
+  - IT administrators running tasklist manually (low risk, low severity)
   - Software installers checking for conflicting processes
