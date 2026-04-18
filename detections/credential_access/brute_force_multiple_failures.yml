@@ -11,6 +11,9 @@ logsource:
   service: security
 detection:
   selection:
+    # Scope to Security channel — event ID 4625 exists in the Application
+    # channel for unrelated events and will cause false positives without this.
+    channel: "Security"
     event_id: 4625
     event_data.LogonType:
       - "2"
@@ -18,7 +21,14 @@ detection:
       - "7"
       - "8"
       - "10"
-  condition: selection
+  # Filter: loopback and link-local addresses — these are local authentication
+  # events (e.g. testing, local service auth), not remote brute force attempts.
+  filter_loopback:
+    event_data.IpAddress:
+      - "127.0.0.1"
+      - "::1"
+      - "-"
+  condition: selection and not filter_loopback
 level: medium
 tags:
   - attack.credential_access

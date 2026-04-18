@@ -26,7 +26,28 @@ detection:
       - "systeminfo.exe"
       - "whoami.exe"
       - "hostname.exe"
-  condition: sysmon_sysinfo or sec_sysinfo
+  # Filter: user-launched processes from Explorer (normal desktop usage).
+  # Real attackers execute discovery tools from script hosts, Office macros, or
+  # remote shells — not by double-clicking from the desktop.
+  filter_explorer_launched:
+    event_data.ParentImage|contains: "\\explorer.exe"
+  # Filter: known legitimate applications and their child processes
+  filter_known_apps:
+    event_data.ParentImage|contains:
+      - "\\Warp\\"
+      - "\\WindowsTerminal\\"
+      - "\\Code\\"
+      - "\\Microsoft VS Code\\"
+      - "\\Cursor\\"
+      - "\\Microsoft Monitoring Agent\\"
+      - "\\services.exe"
+      - "\\svchost.exe"
+  # Filter: discovery tools spawned from known safe system processes
+  filter_system_parent:
+    event_data.ParentImage|contains:
+      - "\\Windows\\System32\\svchost.exe"
+      - "\\Windows\\System32\\WmiPrvSE.exe"
+  condition: (sysmon_sysinfo or sec_sysinfo) and not filter_explorer_launched and not filter_known_apps and not filter_system_parent
 level: low
 tags:
   - attack.discovery
@@ -34,6 +55,5 @@ tags:
   - attack.t1016
   - attack.t1033
 falsepositives:
-  - IT administrators and help desk staff
-  - Software inventory agents
-  - Legitimate user shell sessions
+  - IT administrators running discovery commands from an uncommon shell
+  - Custom scripts spawning whoami/ipconfig from non-standard parents

@@ -30,15 +30,23 @@ detection:
       - "UMFD-1"
       - "UMFD-2"
       - "defaultuser0"
+  # Primary machine owner — fires on every interactive logon session.
+  # This is expected behavior for the endpoint owner's admin account.
+  filter_primary_user:
+    event_data.SubjectUserName|contains: "dvdxdod@gmail.com"
   filter_virtual_accounts:
     # Windows virtual accounts have GUID-format names — filter by length/pattern via endswith trick
     event_data.SubjectUserName|re: "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
-  condition: selection and not (filter_system or filter_virtual_accounts)
+  filter_machine_accounts:
+    # Computer/machine accounts end with $ — they fire 4672 on every boot and service logon.
+    # These are expected and extremely noisy on domain-joined or Azure AD-joined machines.
+    event_data.SubjectUserName|endswith: "$"
+  condition: selection and not (filter_system or filter_virtual_accounts or filter_primary_user or filter_machine_accounts)
 level: low
 tags:
   - attack.privilege_escalation
   - attack.t1078
   - attack.persistence
 falsepositives:
-  - Administrator accounts during routine interactive logon (expected, use for baselining)
-  - Service accounts that authenticate interactively (investigate if unexpected)
+  - Local administrator accounts during routine interactive logon (expected, use for baselining)
+  - Named service accounts not covered by the system filter (add to filter_system if confirmed benign)

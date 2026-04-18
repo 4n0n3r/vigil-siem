@@ -1,0 +1,56 @@
+title: Suspicious Named Pipe Created by Unusual Process
+id: a9b8c7d6-5432-6789-efab-678901234567
+status: stable
+description: >
+  Detects Sysmon Event 17 (Pipe Created) and Event 18 (Pipe Connected) for
+  named pipes associated with common post-exploitation frameworks. Cobalt Strike
+  SMB beacons create named pipes matching patterns like \\.\pipe\MSSE-*, msagent_*,
+  or postex_*. Metasploit uses \\.\pipe\meterpreter*, and many other C2 frameworks
+  create characteristic pipe names for inter-process communication and lateral
+  movement. Sysmon must have PipeMonitoring enabled in its configuration.
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection_event:
+    event_id:
+      - 17
+      - 18
+  # Known Cobalt Strike default pipe names (operators often forget to change these).
+  selection_cobalt_strike:
+    PipeName|contains:
+      - "\\MSSE-"
+      - "\\msagent_"
+      - "\\postex_"
+      - "\\postex_ssh_"
+      - "\\status_"
+      - "\\mojo.5688.8052."
+      - "\\DserNamePipe"
+      - "\\SearchTextHarvester"
+      - "\\ntsvcs"
+      - "\\scerpc_"
+  # Metasploit / Meterpreter
+  selection_metasploit:
+    PipeName|contains:
+      - "\\meterpreter"
+      - "\\msf-pipe"
+      - "\\PSExec"
+  # Suspicious pipe creation from non-system process paths
+  selection_suspicious_source:
+    PipeName|contains:
+      - "\\MSSE-"
+      - "\\46a3d"
+    Image|contains:
+      - "\\Temp\\"
+      - "\\AppData\\"
+      - "\\Users\\Public\\"
+  condition: selection_event and (selection_cobalt_strike or selection_metasploit or selection_suspicious_source)
+level: high
+tags:
+  - attack.lateral_movement
+  - attack.command_and_control
+  - attack.t1021.002
+  - attack.t1572
+falsepositives:
+  - Legitimate software using named pipes with similar naming patterns (rare)
+  - Security research tools running in the environment

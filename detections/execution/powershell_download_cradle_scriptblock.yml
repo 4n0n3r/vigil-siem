@@ -1,0 +1,59 @@
+title: PowerShell Download Cradle via ScriptBlock Logging
+id: e5f60718-4104-4a5b-def0-123456789012
+status: stable
+description: >
+  Detects PowerShell download cradle patterns via ScriptBlock logging
+  (Event 4104 in Microsoft-Windows-PowerShell/Operational). This supplements
+  the existing powershell_download_cradle rule (Sysmon 1 / Security 4688)
+  which depends on the full command being visible in the CommandLine field.
+  ScriptBlock logging captures the actual script content regardless of how
+  PowerShell was invoked — including encoded commands, file-based scripts,
+  and WinRM remoting where CommandLine may be truncated.
+  Also matches cmd.exe wrapper patterns for WinRM-executed cradles.
+logsource:
+  product: windows
+  service: security
+detection:
+  # PowerShell ScriptBlock logging (Event 4104) — catches decoded content
+  scriptblock_download:
+    channel|contains: "Microsoft-Windows-PowerShell"
+    event_id: 4104
+    event_data.ScriptBlockText|contains:
+      - "IEX"
+      - "Invoke-Expression"
+      - "DownloadString"
+      - "DownloadFile"
+      - "Net.WebClient"
+      - "Invoke-WebRequest"
+      - "Start-BitsTransfer"
+      - "Invoke-RestMethod"
+  # cmd.exe wrapping PowerShell download (WinRM execution path)
+  sysmon_cmd_ps_download:
+    event_id: 1
+    event_data.Image|contains: "cmd.exe"
+    event_data.CommandLine|contains:
+      - "powershell"
+    event_data.CommandLine|contains:
+      - "DownloadString"
+      - "DownloadFile"
+      - "WebClient"
+      - "Invoke-WebRequest"
+      - "IEX"
+  # ParentCommandLine: child of cmd.exe that wraps a download cradle
+  sysmon_parent_download:
+    event_id: 1
+    event_data.ParentCommandLine|contains:
+      - "DownloadString"
+      - "DownloadFile"
+      - "Invoke-WebRequest"
+      - "IEX(New-Object"
+  condition: scriptblock_download or sysmon_cmd_ps_download or sysmon_parent_download
+level: high
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.command_and_control
+  - attack.t1105
+falsepositives:
+  - PowerShell package managers (nuget, chocolatey)
+  - Legitimate IT automation downloading scripts

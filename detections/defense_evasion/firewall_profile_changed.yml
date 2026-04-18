@@ -1,0 +1,51 @@
+title: Windows Firewall Profile State Changed
+id: a1b2c3d4-5025-4f6a-8b9c-def012345678
+status: stable
+description: >
+  Detects Windows Firewall profile state changes via the native Firewall
+  operational log (Event 2003) and the Security channel (Event 4950).
+  This supplements the existing firewall_disabled rule by catching changes
+  even when Sysmon or 4688 process creation events are unavailable — for
+  example, when netsh.exe is spawned from WinRM (wsmprovhost.exe) and
+  filtered by Sysmon configuration.
+  Event 2003: "A Windows Firewall setting has changed" — logged in
+  Microsoft-Windows-Windows Firewall With Advanced Security/Firewall.
+  Event 4950: "A Windows Firewall setting has changed" — Security channel.
+logsource:
+  product: windows
+  service: security
+detection:
+  # Firewall operational log: profile state changed
+  firewall_setting_changed:
+    channel|contains:
+      - "Windows Firewall With Advanced Security"
+      - "Microsoft-Windows-Windows Firewall"
+    event_id: 2003
+  # Security channel: firewall setting modified
+  sec_firewall_change:
+    event_id: 4950
+  # Fallback: match cmd.exe parent command line containing advfirewall
+  # This catches WinRM-wrapped commands where cmd.exe /C netsh advfirewall...
+  sysmon_cmd_wrapper:
+    event_id: 1
+    event_data.Image|contains: "cmd.exe"
+    event_data.CommandLine|contains:
+      - "advfirewall set allprofiles state off"
+      - "advfirewall set currentprofile state off"
+      - "advfirewall set domainprofile state off"
+      - "advfirewall set privateprofile state off"
+      - "advfirewall set publicprofile state off"
+  # Security 4688: cmd.exe wrapping netsh (WinRM execution path)
+  sec_cmd_wrapper:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "advfirewall set allprofiles state off"
+      - "advfirewall set currentprofile state off"
+  condition: firewall_setting_changed or sec_firewall_change or sysmon_cmd_wrapper or sec_cmd_wrapper
+level: high
+tags:
+  - attack.defense_evasion
+  - attack.t1562.004
+falsepositives:
+  - Authorized firewall management by IT administrators
+  - GPO-driven firewall profile changes

@@ -9,6 +9,9 @@ package agent
 // InstallService always returns a platform error on non-Windows.
 func InstallService() error { return &PlatformError{} }
 
+// RestartService always returns a platform error on non-Windows.
+func RestartService() error { return &PlatformError{} }
+
 // UninstallService always returns a platform error on non-Windows.
 func UninstallService() error { return &PlatformError{} }
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -79,17 +80,26 @@ type batchIngestResponse struct {
 	Errors   []string `json:"errors"`
 }
 
+// heartbeatResponse mirrors PATCH /v1/endpoints/{id}/heartbeat.
+type heartbeatResponse struct {
+	ID              string   `json:"id"`
+	LastSeen        string   `json:"last_seen"`
+	PendingCommands []string `json:"pending_commands"`
+}
+
 // ----------------------------------------------------------------------------
 // Agent
 // ----------------------------------------------------------------------------
 
 // Config holds all tunable knobs for the agent.
 type Config struct {
-	Channels      []string
-	BatchSize     int
-	FlushInterval time.Duration
-	BookmarkDir   string
-	StatusFile    string
+	Channels          []string
+	BatchSize         int
+	FlushInterval     time.Duration
+	BookmarkDir       string
+	StatusFile        string
+	EndpointID        string
+	HeartbeatInterval time.Duration
 }
 
 // machineVigilDir returns the machine-wide data directory for agent runtime
@@ -118,11 +128,37 @@ func DefaultConfig() Config {
 			"Microsoft-Windows-Sysmon/Operational",
 			"Microsoft-Windows-PowerShell/Operational",
 		},
-		BatchSize:     100,
-		FlushInterval: 5 * time.Second,
-		BookmarkDir:   filepath.Join(vigilDir, "bookmarks"),
-		StatusFile:    filepath.Join(vigilDir, "agent_status.json"),
+		BatchSize:         100,
+		FlushInterval:     5 * time.Second,
+		HeartbeatInterval: 30 * time.Second,
+		BookmarkDir:       filepath.Join(vigilDir, "bookmarks"),
+		StatusFile:        filepath.Join(vigilDir, "agent_status.json"),
 	}
+}
+
+// detectedIP returns the first non-loopback, non-link-local IPv4 address found
+// on the host, or an empty string if none is available.
+func detectedIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		var ip net.IP
+		switch v := addr.(type) {
+		case *net.IPNet:
+			ip = v.IP
+		case *net.IPAddr:
+			ip = v.IP
+		}
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		if ip4 := ip.To4(); ip4 != nil {
+			return ip4.String()
+		}
+	}
+	return ""
 }
 
 // Agent is the top-level coordinator.
@@ -228,6 +264,38 @@ func (a *Agent) Run(ctx context.Context) error {
 	statusTicker := time.NewTicker(10 * time.Second)
 	defer statusTicker.Stop()
 
+	// Heartbeat goroutine: ping the API, pick up pending commands.
+	if a.cfg.EndpointID != "" {
+		hbInterval := a.cfg.HeartbeatInterval
+		if hbInterval <= 0 {
+			hbInterval = 30 * time.Second
+		}
+		go func() {
+			ticker := time.NewTicker(hbInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					hbBody := struct {
+						IPAddress string `json:"ip_address"`
+					}{IPAddress: detectedIP()}
+					var hbResp heartbeatResponse
+					if err := a.apiClient.Patch("/v1/endpoints/"+a.cfg.EndpointID+"/heartbeat", hbBody, &hbResp); err != nil {
+						a.logError("HEARTBEAT_ERROR", err.Error())
+						continue
+					}
+					for _, cmd := range hbResp.PendingCommands {
+						if cmd == "forensic_collect" {
+							go a.runForensicCollect(ctx)
+						}
+					}
+				}
+			}
+		}()
+	}
+
 	// Write an initial status file immediately.
 	a.writeStatusFile()
 
@@ -304,6 +372,37 @@ func (a *Agent) flush() {
 			a.logError("BOOKMARK_SAVE_ERROR",
 				fmt.Sprintf("collector %q bookmark save failed: %v", col.Name(), err))
 		}
+	}
+}
+
+// runForensicCollect instantiates a ForensicCollector, drains all events, and
+// batch-ingests them. Runs in its own goroutine triggered by a remote command.
+func (a *Agent) runForensicCollect(ctx context.Context) {
+	fc := NewForensicCollector()
+	ch, err := fc.Start(ctx)
+	if err != nil {
+		a.logError("FORENSIC_START_ERROR", err.Error())
+		return
+	}
+	var batch []Event
+	for ev := range ch {
+		batch = append(batch, ev)
+		if len(batch) >= a.cfg.BatchSize {
+			a.ingestBatch(batch)
+			batch = batch[:0]
+		}
+	}
+	if len(batch) > 0 {
+		a.ingestBatch(batch)
+	}
+}
+
+// ingestBatch sends a slice of events to the API.
+func (a *Agent) ingestBatch(events []Event) {
+	req := batchIngestRequest{Events: events}
+	var resp batchIngestResponse
+	if err := a.apiClient.Post("/v1/events/batch", req, &resp); err != nil {
+		a.logError("FLUSH_ERROR", err.Error())
 	}
 }
 

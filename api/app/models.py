@@ -193,6 +193,7 @@ class EndpointRegisterRequest(BaseModel):
     name: str
     hostname: str = ""
     os: str = ""
+    ip_address: str = ""
     metadata: dict[str, Any] = {}
     enroll_token: str = ""  # required when VIGIL_REQUIRE_AUTH=true
 
@@ -209,6 +210,7 @@ class Endpoint(BaseModel):
     name: str
     hostname: str
     os: str
+    ip_address: str = ""
     last_seen: datetime | None = None
     created_at: datetime
     metadata: dict[str, Any]
@@ -219,9 +221,18 @@ class EndpointListResponse(BaseModel):
     total: int
 
 
+class EndpointHeartbeatRequest(BaseModel):
+    ip_address: str = ""
+
+
 class EndpointHeartbeatResponse(BaseModel):
     id: str
     last_seen: datetime
+    pending_commands: list[str] = []
+
+
+class EndpointCommandRequest(BaseModel):
+    command: str
 
 
 # ---------------------------------------------------------------------------
@@ -278,3 +289,104 @@ class HuntResponse(BaseModel):
     aggregations: list[HuntAggBucket] = []
     timeline: list[TimelineBucket] = []
     query: str
+
+
+# ---------------------------------------------------------------------------
+# SIEM connectors
+# ---------------------------------------------------------------------------
+
+class ConnectorCreate(BaseModel):
+    name: str
+    siem_type: Literal["wazuh", "elastic"]
+    config: dict[str, Any]  # type-specific connection params + credentials
+
+
+class ConnectorResponse(BaseModel):
+    id: str
+    name: str
+    siem_type: str
+    config: dict[str, Any]  # credentials redacted before returning
+    enabled: bool
+    last_polled: datetime | None = None
+    last_error: str | None = None
+    created_at: datetime
+
+
+class ConnectorListResponse(BaseModel):
+    connectors: list[ConnectorResponse]
+    total: int
+
+
+class ConnectorTestResult(BaseModel):
+    ok: bool
+    message: str
+    connector_id: str
+    latency_ms: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# Feed (unified alert + context feed from connected SIEMs)
+# ---------------------------------------------------------------------------
+
+class FeedAlert(BaseModel):
+    """A single alert pulled from a connected SIEM, unnormalized."""
+    connector_id: str
+    connector_name: str
+    source_siem: str          # 'wazuh', 'elastic', ...
+    native_id: str            # alert ID as it exists in the originating SIEM
+    severity: str             # critical / high / medium / low
+    title: str
+    hostname: str | None = None
+    source_ip: str | None = None
+    detected_at: datetime
+    raw: dict[str, Any]       # full original document from the SIEM
+
+
+class FeedAlertsResponse(BaseModel):
+    alerts: list[FeedAlert]
+    total: int
+    connectors_queried: int
+    errors: list[str] = []    # connector names that failed
+
+
+class FeedContextResponse(BaseModel):
+    alert: FeedAlert
+    events: list[dict[str, Any]]  # raw log events from the SIEM
+    total_events: int
+    window_minutes: int
+
+
+# ---------------------------------------------------------------------------
+# Suppressions
+# ---------------------------------------------------------------------------
+
+class SuppressionCreate(BaseModel):
+    name: str
+    field_path: str
+    field_value: str
+    match_type: Literal["exact", "contains", "regex"] = "exact"
+    scope: str = "global"
+    description: str = ""
+
+
+class SuppressionResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    field_path: str
+    field_value: str
+    match_type: str
+    scope: str
+    enabled: bool
+    hit_count: int
+    last_hit_at: datetime | None = None
+    created_at: datetime
+
+
+class SuppressionListResponse(BaseModel):
+    suppressions: list[SuppressionResponse]
+    total: int
+
+
+class SuppressionToggleRequest(BaseModel):
+    enabled: bool

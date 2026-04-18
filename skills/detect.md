@@ -8,7 +8,52 @@
 
 ## Steps
 
+### Step 0 — Pre-flight: check available log data
+
+Before writing a rule, verify that the target log sources and fields actually
+exist in the Vigil event store.
+
+```bash
+vigil search --query "<expected_field_or_value>" --limit 3 --output json
+```
+
+**Verify:**
+- Events exist for the log source the rule targets (e.g. Sysmon EID 1, Security 4688)
+- The field names in returned events match what the rule `detection.selection` uses
+  (e.g. `event_data.CommandLine`, `event_data.Image`)
+- If the field names differ, adjust the rule before deploying
+
+---
+
 ### Step 1 — Create the rule
+
+The Sigma YAML `title:` becomes the alert name shown during triage. Follow
+this naming structure:
+
+```
+<Threat Name> - <Observable Behavior>
+```
+
+**Rules:**
+- Use a plain unquoted string — no `"quotes"` around the title value
+- Use ` - ` (space-dash-space) to separate the threat name from the behavior
+- Do NOT put specifics like IPs, domains, or hashes in parentheses — put
+  those in the `description` field instead
+- Keep it short enough to scan at a glance in an alert list
+
+**Good examples:**
+```
+title: Axios RAT - DNS Query to C2 Domain
+title: Axios RAT - Node.js Spawns cscript via Postinstall Dropper
+title: Cobalt Strike - Named Pipe Default Pattern
+```
+
+**Bad examples:**
+```
+title: "Axios RAT: DNS Query to C2 Domain (sfrclak.com)"   # quotes + parens
+title: Suspicious Activity                                  # too vague
+title: T1059.005                                            # MITRE ID is not a name
+```
 
 ```bash
 vigil detections create --file <rule.yaml> --output json
@@ -44,6 +89,22 @@ vigil ingest \
   --output json
 ```
 
+**PowerShell 5.1 workaround:** The CLI `--event` flag has JSON quoting
+issues on older PowerShell. If you hit `INVALID_JSON` errors, POST directly
+to the API instead:
+
+```powershell
+# Write the test event to a temp file
+Set-Content "$env:TEMP\test_event.json" -Value '<api_body_json>' -NoNewline -Encoding ASCII
+
+# POST to the API
+curl.exe -s -X POST http://localhost:8001/v1/events `
+  -H "Content-Type: application/json" `
+  -d "@$env:TEMP\test_event.json"
+```
+
+The API body format is: `{"source": "<source>", "event": {<event_fields>}}`
+
 **Verify:**
 - `response.alert_ids.length > 0` — this is the critical check
 - If `alert_ids` is empty, the rule did not fire:
@@ -77,7 +138,16 @@ vigil alerts acknowledge <alert_id> --note "FP: known-good event" --output json
 # Option B: Disable the rule for refinement
 vigil detections update <rule_id> --enabled false --output json
 vigil detections get <rule_id> --output json   # verify enabled == false
+
+# Option C: Tighten the rule (preferred for recurring FPs)
+# Add a filter block to the detection YAML to exclude known-good patterns:
+#   filter_known_good:
+#     event_data.CommandLine|contains: "<known_good_value>"
+#   condition: selection and not filter_known_good
 ```
+
+**Guidance:** Prefer Option C when FPs share a consistent, distinguishable
+pattern. Option A is best for one-off FPs. Option B is a last resort.
 
 ---
 

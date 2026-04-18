@@ -12,4 +12,7 @@ func init() {
 	rootCmd.AddCommand(huntCmd)
 	rootCmd.AddCommand(endpointsCmd)
 	rootCmd.AddCommand(cloudCmd)
+	rootCmd.AddCommand(connectorCmd)
+	rootCmd.AddCommand(feedCmd)
+	rootCmd.AddCommand(suppressionsCmd)
 }

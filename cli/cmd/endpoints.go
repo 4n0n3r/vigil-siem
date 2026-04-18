@@ -15,6 +15,7 @@ type endpointDetail struct {
 	Name      string                 `json:"name"`
 	Hostname  string                 `json:"hostname"`
 	OS        string                 `json:"os"`
+	IPAddress string                 `json:"ip_address"`
 	LastSeen  string                 `json:"last_seen"`
 	CreatedAt string                 `json:"created_at"`
 	Metadata  map[string]interface{} `json:"metadata"`
@@ -61,13 +62,17 @@ var endpointsListCmd = &cobra.Command{
 			return nil
 		}
 
-		t := output.NewTable([]string{"ID", "Name", "Hostname", "OS", "Last Seen"})
+		t := output.NewTable([]string{"ID", "Name", "Hostname", "IP Address", "OS", "Last Seen"})
 		for _, e := range resp.Endpoints {
 			lastSeen := e.LastSeen
 			if len(lastSeen) > 19 {
 				lastSeen = lastSeen[:19]
 			}
-			t.Append([]string{e.ID[:8] + "...", e.Name, e.Hostname, e.OS, lastSeen})
+			hostname := e.Hostname
+			if hostname == "" {
+				hostname = e.Name
+			}
+			t.Append([]string{e.ID[:8] + "...", e.Name, hostname, e.IPAddress, e.OS, lastSeen})
 		}
 		t.Render()
 		fmt.Printf("\n%d endpoint(s) registered\n", resp.Total)
@@ -93,10 +98,15 @@ var endpointsGetCmd = &cobra.Command{
 			return nil
 		}
 
+		hostname := resp.Hostname
+		if hostname == "" {
+			hostname = resp.Name
+		}
 		t := output.NewTable([]string{"Field", "Value"})
 		t.Append([]string{"ID", resp.ID})
 		t.Append([]string{"Name", resp.Name})
-		t.Append([]string{"Hostname", resp.Hostname})
+		t.Append([]string{"Hostname", hostname})
+		t.Append([]string{"IP Address", resp.IPAddress})
 		t.Append([]string{"OS", resp.OS})
 		t.Append([]string{"Last Seen", resp.LastSeen})
 		t.Append([]string{"Created At", resp.CreatedAt})

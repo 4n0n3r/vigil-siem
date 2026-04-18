@@ -58,10 +58,14 @@ def _compute_source_event_id(event: StoredEvent) -> str:
 # ---------------------------------------------------------------------------
 
 async def add_event(event: StoredEvent) -> bool:
-    """Persist a single event — ClickHouse if available, else fallback list.
+    """Persist a single event to ClickHouse.
 
     Returns True if the event was stored, False if it was a known duplicate.
+    Raises RuntimeError if ClickHouse is configured but unavailable — callers
+    should surface this as a 503 rather than silently losing data.
     """
+    from app.db import clickhouse  # noqa: PLC0415
+
     key = _compute_source_event_id(event)
     if key:
         if key in _seen:
@@ -76,10 +80,20 @@ async def add_event(event: StoredEvent) -> bool:
             await asyncio.to_thread(_ch_insert, client, event)
             return True
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                '{"event": "ch_insert_failed", "error": "%s", "fallback": true}',
+            logger.error(
+                '{"event": "ch_insert_failed", "error": "%s"}',
                 str(exc).replace('"', "'"),
             )
+            raise RuntimeError(f"ClickHouse insert failed: {exc}") from exc
+
+    if clickhouse.is_configured():
+        # DSN was set but connection failed at startup — refuse rather than lose data.
+        raise RuntimeError(
+            "ClickHouse is configured but unavailable — "
+            "event not stored. Check CLICKHOUSE_DSN and connectivity."
+        )
+
+    # No ClickHouse configured: use in-memory fallback (development / quick-start mode).
     _fallback_events.append(event)
     if len(_fallback_events) > _FALLBACK_MAX:
         del _fallback_events[0]

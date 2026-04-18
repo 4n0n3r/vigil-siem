@@ -6,10 +6,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
-	"golang.org/x/sys/windows"
 )
 
 const (
@@ -58,6 +59,52 @@ func InstallService() error {
 	}
 	defer s.Close()
 
+	return nil
+}
+
+// RestartService stops the Windows Service (if running) and starts it again.
+func RestartService() error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("could not connect to SCM: %w", err)
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(serviceName)
+	if err != nil {
+		return fmt.Errorf("service %q not found — run 'vigil agent install' first: %w", serviceName, err)
+	}
+	defer s.Close()
+
+	// Stop if running or starting.
+	status, err := s.Query()
+	if err != nil {
+		return fmt.Errorf("could not query service status: %w", err)
+	}
+	if status.State == svc.Running || status.State == svc.StartPending {
+		if _, err := s.Control(svc.Stop); err != nil {
+			return fmt.Errorf("could not stop service: %w", err)
+		}
+		// Poll until stopped (timeout after 30s).
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			status, err = s.Query()
+			if err != nil {
+				return fmt.Errorf("could not query service status while stopping: %w", err)
+			}
+			if status.State == svc.Stopped {
+				break
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timed out waiting for service to stop")
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+
+	if err := s.Start(); err != nil {
+		return fmt.Errorf("could not start service: %w", err)
+	}
 	return nil
 }
 

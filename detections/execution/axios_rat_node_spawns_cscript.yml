@@ -1,0 +1,30 @@
+title: Axios RAT - Node.js Spawns cscript via Postinstall Dropper
+id: a1c30e72-7f44-4b8a-0001-6e3f8a2d9c01
+status: experimental
+description: >
+  Detects node.exe spawning cscript.exe with //nologo, the entry point of the
+  axios npm supply chain attack (March 2026). The malicious postinstall hook
+  in plain-crypto-js@4.2.1 uses node to write a VBScript to %TEMP% and
+  launches it via cscript //nologo to begin the RAT deployment chain.
+  Reference: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    event_id: 1
+    event_data.ParentImage|contains: "node"
+    event_data.Image|contains: "cscript.exe"
+    event_data.CommandLine|contains: "//nologo"
+  condition: selection
+level: critical
+tags:
+  - attack.execution
+  - attack.t1059.005
+  - supply_chain
+falsepositives:
+  - Legitimate node.js build tools that invoke cscript are rare but possible

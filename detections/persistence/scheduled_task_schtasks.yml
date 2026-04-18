@@ -1,0 +1,46 @@
+title: Scheduled Task Created via schtasks.exe
+id: b2c3d4e5-4698-4a5b-9c8d-ef0123456789
+status: stable
+description: >
+  Detects scheduled task creation via schtasks.exe process execution.
+  This supplements the existing scheduled_task_created rule (Event 4698)
+  which requires the "Object Access → Other Object Access Events" audit
+  policy. This rule uses Sysmon Event 1 and Security 4688 to catch
+  schtasks.exe /create commands even when 4698 auditing is not enabled.
+  Also matches the cmd.exe wrapper pattern from WinRM execution.
+logsource:
+  product: windows
+  service: security
+detection:
+  # Sysmon: schtasks.exe with /create
+  sysmon_schtasks:
+    event_id: 1
+    event_data.Image|contains: "schtasks.exe"
+    event_data.CommandLine|contains: "/create"
+  # Sysmon: cmd.exe wrapping schtasks (WinRM path)
+  sysmon_cmd_schtasks:
+    event_id: 1
+    event_data.Image|contains: "cmd.exe"
+    event_data.CommandLine|contains:
+      - "schtasks /create"
+      - "schtasks.exe /create"
+  # Security 4688: schtasks.exe /create
+  sec_schtasks:
+    event_id: 4688
+    event_data.CommandLine|contains:
+      - "schtasks /create"
+      - "schtasks.exe /create"
+  # Task Scheduler operational log: task registered (always logged)
+  task_scheduler_registered:
+    channel|contains: "Microsoft-Windows-TaskScheduler"
+    event_id: 106
+  condition: sysmon_schtasks or sysmon_cmd_schtasks or sec_schtasks or task_scheduler_registered
+level: medium
+tags:
+  - attack.persistence
+  - attack.t1053.005
+falsepositives:
+  - Legitimate software installers creating scheduled tasks
+  - Windows Update and system maintenance tasks
+  - IT automation (SCCM, Intune, GPO)
+  - ClickToRun Office updates

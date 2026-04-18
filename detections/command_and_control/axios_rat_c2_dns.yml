@@ -1,0 +1,29 @@
+title: Axios RAT - DNS Query to C2 Domain
+id: a1c30e72-7f44-4b8a-0004-6e3f8a2d9c01
+status: experimental
+description: >
+  Detects DNS resolution of sfrclak.com, the command-and-control domain used
+  by the axios npm supply chain RAT. The dropper contacts
+  http://sfrclak.com:8000/6202033 to fetch platform-specific RAT payloads.
+  A DNS query for this domain means the dropper executed and reached the
+  network stage.
+  Reference: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+author: Vigil (automated)
+date: 2026/03/31
+references:
+  - https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+logsource:
+  product: windows
+  service: sysmon
+detection:
+  selection:
+    event_id: 22
+    event_data.QueryName|contains: "sfrclak.com"
+  condition: selection
+level: critical
+tags:
+  - attack.command_and_control
+  - attack.t1071.001
+  - supply_chain
+falsepositives:
+  - None expected — this is a known malicious C2 domain
