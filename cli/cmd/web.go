@@ -73,11 +73,8 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 
 		mux := http.NewServeMux()
 
-		// Resolve API key (flag > env > config).
-		apiKey := globalAPIKey
-		if apiKey == "" {
-			apiKey = os.Getenv("VIGIL_API_KEY")
-		}
+		// Resolve API key (env > config).
+		apiKey := os.Getenv("VIGIL_API_KEY")
 		if apiKey == "" {
 			apiKey = globalConfig.APIKey
 		}
