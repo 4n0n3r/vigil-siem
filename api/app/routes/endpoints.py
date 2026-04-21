@@ -22,9 +22,13 @@ from app.models import (
     EndpointRegisterRequest,
     EndpointRegisterResponse,
     ErrorResponse,
+    IPHistoryEntry,
 )
 
 _REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
+# Operator sets this to the latest released agent version (e.g. "1.4.2").
+# Agents on older versions will auto-update when they see a different value in heartbeat responses.
+_LATEST_AGENT_VERSION = os.environ.get("VIGIL_LATEST_AGENT_VERSION", "").strip()
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +53,7 @@ def _not_found(endpoint_id: str) -> JSONResponse:
     return JSONResponse(status_code=404, content=body.model_dump())
 
 
-def _row_to_endpoint(row: dict) -> Endpoint:
+def _row_to_endpoint(row: dict, ip_history: list[dict] | None = None) -> Endpoint:
     meta = row.get("metadata") or {}
     if isinstance(meta, str):
         try:
@@ -65,6 +69,7 @@ def _row_to_endpoint(row: dict) -> Endpoint:
         last_seen=row.get("last_seen"),
         created_at=row["created_at"],
         metadata=meta,
+        ip_history=[IPHistoryEntry(**h) for h in (ip_history or [])],
     )
 
 
@@ -160,7 +165,8 @@ async def get_endpoint(endpoint_id: str):
     if row is None:
         return _not_found(endpoint_id)
 
-    return _row_to_endpoint(row)
+    ip_history = await pg_endpoints.get_ip_history(endpoint_id)
+    return _row_to_endpoint(row, ip_history=ip_history)
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +198,17 @@ async def endpoint_heartbeat(endpoint_id: str, body: EndpointHeartbeatRequest = 
         return _db_unavailable()
 
     ip_address = body.ip_address if body else ""
-    ok = await pg_endpoints.heartbeat(endpoint_id, ip_address=ip_address)
+
+    # Merge sys_info + agent version into the metadata JSONB.
+    sys_info: dict | None = None
+    if body:
+        if body.sys_info:
+            sys_info = body.sys_info.model_dump(exclude_none=True)
+        if body.version:
+            sys_info = sys_info or {}
+            sys_info["agent_version"] = body.version
+
+    ok = await pg_endpoints.heartbeat(endpoint_id, ip_address=ip_address, sys_info=sys_info)
     if not ok:
         return _not_found(endpoint_id)
 
@@ -206,6 +222,7 @@ async def endpoint_heartbeat(endpoint_id: str, body: EndpointHeartbeatRequest = 
         id=endpoint_id,
         last_seen=datetime.now(timezone.utc),
         pending_commands=pending,
+        latest_version=_LATEST_AGENT_VERSION,
     )
 
 

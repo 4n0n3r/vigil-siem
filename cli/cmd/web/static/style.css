@@ -718,6 +718,18 @@ tr.selected td { background: rgba(0, 229, 255, 0.05); }
   white-space: nowrap;
 }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-inline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.btn-inline:hover { border-color: var(--accent); color: var(--accent); }
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);

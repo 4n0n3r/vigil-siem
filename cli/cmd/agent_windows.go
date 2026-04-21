@@ -35,6 +35,11 @@ func windowsProfileChannels(profile string) []string {
 	}
 }
 
+// platformServiceInfo returns the service name and start hint for the current platform.
+func platformServiceInfo() (name, startHint string) {
+	return "VIGILAgent", "sc start VIGILAgent"
+}
+
 // addPlatformCollectors wires Windows Event Log collectors into the agent.
 // If explicit channels were set via --channels, those take precedence over profile.
 func addPlatformCollectors(a *agent.Agent, cfg agent.Config, profile string) {

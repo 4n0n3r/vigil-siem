@@ -205,6 +205,12 @@ class EndpointRegisterResponse(BaseModel):
     created_at: datetime
 
 
+class IPHistoryEntry(BaseModel):
+    ip_address: str
+    first_seen: datetime
+    last_seen: datetime
+
+
 class Endpoint(BaseModel):
     id: str
     name: str
@@ -214,6 +220,7 @@ class Endpoint(BaseModel):
     last_seen: datetime | None = None
     created_at: datetime
     metadata: dict[str, Any]
+    ip_history: list[IPHistoryEntry] = []
 
 
 class EndpointListResponse(BaseModel):
@@ -221,14 +228,27 @@ class EndpointListResponse(BaseModel):
     total: int
 
 
+class SysInfoPayload(BaseModel):
+    os_version: str = ""
+    kernel: str = ""
+    cpu_count: int = 0
+    cpu_model: str = ""
+    total_ram_mb: int = 0
+    disk_total_gb: int = 0
+    disk_free_gb: int = 0
+
+
 class EndpointHeartbeatRequest(BaseModel):
     ip_address: str = ""
+    sys_info: SysInfoPayload | None = None
+    version: str = ""  # agent build version, stored in metadata
 
 
 class EndpointHeartbeatResponse(BaseModel):
     id: str
     last_seen: datetime
     pending_commands: list[str] = []
+    latest_version: str = ""  # set by VIGIL_LATEST_AGENT_VERSION env var; triggers auto-update
 
 
 class EndpointCommandRequest(BaseModel):

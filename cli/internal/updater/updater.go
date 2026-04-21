@@ -99,6 +99,58 @@ func CheckLatest() (*Release, error) {
 	}, nil
 }
 
+// CheckLatestVersion builds a Release for a specific version tag without
+// hitting the GitHub API (the version is already known from the heartbeat).
+// It uses the standard GitHub release asset URL pattern.
+func CheckLatestVersion(version, flavor string) (*Release, error) {
+	binaryName := PlatformBinaryNameFlavored(flavor, version)
+	tag := "v" + version
+	// Strip leading "v" if the caller already included it.
+	if len(version) > 0 && version[0] == 'v' {
+		tag = version
+		version = version[1:]
+		binaryName = PlatformBinaryNameFlavored(flavor, version)
+	}
+
+	baseURL := "https://github.com/" + githubRepo + "/releases/download/" + tag
+	return &Release{
+		Version:     version,
+		BinaryName:  binaryName,
+		BinaryURL:   baseURL + "/" + binaryName,
+		ChecksumURL: baseURL + "/checksums.txt",
+	}, nil
+}
+
+// Download fetches and SHA256-verifies a release binary into destPath without
+// installing it. Use this when the rename step must happen out-of-process
+// (e.g. Windows service auto-update via a PowerShell helper).
+func Download(release *Release, destPath string) error {
+	if err := downloadFile(release.BinaryURL, destPath); err != nil {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("download failed: %w", err)
+	}
+	if release.ChecksumURL != "" {
+		if err := verifyChecksum(destPath, release.BinaryName, release.ChecksumURL); err != nil {
+			_ = os.Remove(destPath)
+			return fmt.Errorf("checksum mismatch: %w", err)
+		}
+	}
+	if err := os.Chmod(destPath, 0o755); err != nil {
+		_ = os.Remove(destPath)
+		return fmt.Errorf("could not chmod: %w", err)
+	}
+	return nil
+}
+
+// PlatformBinaryNameFlavored returns the release asset name for a given binary
+// flavor (e.g. "vigil" or "vigil-agent") and version string.
+func PlatformBinaryNameFlavored(flavor, version string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("%s_%s_%s_%s.exe", flavor, version, runtime.GOOS, runtime.GOARCH)
+	}
+	return fmt.Sprintf("%s_%s_%s_%s", flavor, version, runtime.GOOS, runtime.GOARCH)
+}
+
 // Apply downloads, verifies, and atomically installs the new binary.
 // The caller is responsible for restarting any running service after this returns.
 func Apply(release *Release, progressFn func(msg string)) error {

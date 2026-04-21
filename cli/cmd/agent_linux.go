@@ -8,6 +8,11 @@ import (
 	"github.com/vigil/vigil/internal/agent"
 )
 
+// platformServiceInfo returns the service name and start hint for Linux.
+func platformServiceInfo() (name, startHint string) {
+	return "vigil-agent", "systemctl start vigil-agent"
+}
+
 // addPlatformCollectors wires Linux log collectors into the agent.
 // profile controls which collectors are enabled:
 //

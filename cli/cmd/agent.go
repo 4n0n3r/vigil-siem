@@ -42,9 +42,9 @@ var agentCmd = &cobra.Command{
 
 Subcommands:
   start      Start collecting events (foreground)
-  install    Install as a Windows Service (auto-start)
-  uninstall  Remove the Windows Service
-  restart    Restart the Windows Service (stop + start)
+  install    Install as a system service (Windows Service / systemd)
+  uninstall  Remove the system service
+  restart    Restart the system service
   status     Show agent health and statistics`,
 }
 
@@ -83,8 +83,10 @@ the Windows channel list explicitly.`,
 			cfg.BookmarkDir = agentBookmarkDir
 		}
 
-		// Pass endpoint ID so the agent can send heartbeats.
-		cfg.EndpointID = globalConfig.EndpointID
+		// Pass endpoint ID and build identity so the agent can heartbeat and auto-update.
+		cfg.EndpointID   = globalConfig.EndpointID
+		cfg.Version      = Version
+		cfg.BinaryFlavor = BinaryFlavor
 
 		a := agent.New(apiClient, cfg)
 
@@ -166,10 +168,10 @@ the Windows channel list explicitly.`,
 
 var agentInstallCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install Vigil agent as a Windows Service (auto-start, LocalSystem)",
+	Short: "Install Vigil agent as a system service (Windows Service or systemd unit)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := agent.InstallService(); err != nil {
-			output.PrintError("INSTALL_ERROR", "failed to install Windows Service", err.Error())
+			output.PrintError("INSTALL_ERROR", "failed to install service", err.Error())
 			return nil
 		}
 
@@ -188,22 +190,22 @@ var agentInstallCmd = &cobra.Command{
 			}
 		}
 
+		svcName, startHint := platformServiceInfo()
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type result struct {
 				Status      string `json:"status"`
 				ServiceName string `json:"service_name"`
 			}
-			output.PrintJSON(result{Status: "installed", ServiceName: "VIGILAgent"})
+			output.PrintJSON(result{Status: "installed", ServiceName: svcName})
 		} else {
 			t := output.NewTable([]string{"Field", "Value"})
 			t.Append([]string{"Status", "installed"})
-			t.Append([]string{"Service Name", "VIGILAgent"})
-			t.Append([]string{"Display Name", "Vigil Security Agent"})
+			t.Append([]string{"Service Name", svcName})
 			t.Append([]string{"Start Type", "Automatic"})
 			t.Render()
 			fmt.Println()
-			fmt.Println("Start the service with:  sc start VIGILAgent")
+			fmt.Println("Start the service with: ", startHint)
 		}
 		return nil
 	},
@@ -215,24 +217,25 @@ var agentInstallCmd = &cobra.Command{
 
 var agentUninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Remove the Vigil agent Windows Service",
+	Short: "Remove the Vigil agent system service (Windows Service or systemd unit)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := agent.UninstallService(); err != nil {
-			output.PrintError("UNINSTALL_ERROR", "failed to uninstall Windows Service", err.Error())
+			output.PrintError("UNINSTALL_ERROR", "failed to uninstall service", err.Error())
 			return nil
 		}
 
+		svcName, _ := platformServiceInfo()
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type result struct {
 				Status      string `json:"status"`
 				ServiceName string `json:"service_name"`
 			}
-			output.PrintJSON(result{Status: "uninstalled", ServiceName: "VIGILAgent"})
+			output.PrintJSON(result{Status: "uninstalled", ServiceName: svcName})
 		} else {
 			t := output.NewTable([]string{"Field", "Value"})
 			t.Append([]string{"Status", "uninstalled"})
-			t.Append([]string{"Service Name", "VIGILAgent"})
+			t.Append([]string{"Service Name", svcName})
 			t.Render()
 			fmt.Println()
 		}
@@ -246,24 +249,25 @@ var agentUninstallCmd = &cobra.Command{
 
 var agentRestartCmd = &cobra.Command{
 	Use:   "restart",
-	Short: "Restart the Vigil agent Windows Service",
+	Short: "Restart the Vigil agent system service (Windows Service or systemd unit)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := agent.RestartService(); err != nil {
-			output.PrintError("RESTART_ERROR", "failed to restart Windows Service", err.Error())
+			output.PrintError("RESTART_ERROR", "failed to restart service", err.Error())
 			return nil
 		}
 
+		svcName, _ := platformServiceInfo()
 		mode := output.ParseMode(globalOutput)
 		if mode == output.ModeJSON {
 			type result struct {
 				Status      string `json:"status"`
 				ServiceName string `json:"service_name"`
 			}
-			output.PrintJSON(result{Status: "restarted", ServiceName: "VIGILAgent"})
+			output.PrintJSON(result{Status: "restarted", ServiceName: svcName})
 		} else {
 			t := output.NewTable([]string{"Field", "Value"})
 			t.Append([]string{"Status", "restarted"})
-			t.Append([]string{"Service Name", "VIGILAgent"})
+			t.Append([]string{"Service Name", svcName})
 			t.Render()
 			fmt.Println()
 		}
