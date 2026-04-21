@@ -220,7 +220,8 @@ async function renderDashboard() {
     // Top hosts.
     const hostCounts = {};
     alerts.forEach(a => {
-      const host = (a.event_snapshot || {}).computer || '';
+      const snap = a.event_snapshot || {};
+      const host = snap.computer || snap._HOSTNAME || '';
       if (host) hostCounts[host] = (hostCounts[host] || 0) + 1;
     });
     const topHosts    = Object.entries(hostCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -551,7 +552,8 @@ function renderAlertTable(alerts, showCheck) {
     </tr></thead>
     <tbody>
       ${alerts.map(a => {
-        const host = (a.event_snapshot || {}).computer || '—';
+        const snap = a.event_snapshot || {};
+        const host = snap.computer || snap._HOSTNAME || '—';
         return `
         <tr data-id="${a.id}">
           ${showCheck ? `<td><input type="checkbox" class="row-check" data-id="${a.id}"></td>` : ''}
@@ -574,7 +576,7 @@ async function renderAlertDetail(id) {
   try {
     const alert = await api('/v1/alerts/' + id);
     const snap  = alert.event_snapshot || {};
-    const host  = snap.computer || '';
+    const host  = snap.computer || snap._HOSTNAME || '';
 
     // Parallel secondary fetches — don't block on failures.
     const [evRes, alertsRes, rulesRes] = await Promise.allSettled([
@@ -767,6 +769,17 @@ function renderParsedFields(snap) {
   if (other.length) {
     html += `<div class="field-group"><div class="field-group-label">Other</div>`;
     other.forEach(([k, v]) => { html += field(k, String(v)); });
+    html += `</div>`;
+  }
+
+  // Top-level snap fields not in the Windows-specific set (e.g. Linux journald/syslog events).
+  const knownTopLevel = new Set(['event_id', 'channel', 'computer', 'record_id', 'event_data']);
+  const flatFields = Object.entries(snap).filter(([k, v]) =>
+    !knownTopLevel.has(k) && v != null && v !== '' && v !== '-' && typeof v !== 'object'
+  );
+  if (flatFields.length) {
+    html += `<div class="field-group"><div class="field-group-label">Event</div>`;
+    flatFields.forEach(([k, v]) => { html += field(k, String(v)); });
     html += `</div>`;
   }
 
@@ -1061,7 +1074,7 @@ async function renderAgentDetail(id) {
         <div class="card">
           <div class="card-title">Recent Alerts <span class="page-sub">(from this endpoint)</span></div>
           ${alerts.length === 0
-            ? '<div class="empty" style="padding:16px">No alerts from this endpoint.</div>'
+            ? `<div class="empty" style="padding:16px">No alerts linked to this endpoint ID.<br><small style="color:var(--text-dim)">Alerts are only linked when the agent sends events with a valid API key. If the agent was started before registration, restart the service so future events are linked.</small></div>`
             : renderAlertTable(alerts, false)}
         </div>
       </div>
