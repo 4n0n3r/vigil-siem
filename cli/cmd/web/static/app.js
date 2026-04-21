@@ -1037,6 +1037,68 @@ async function renderAgents() {
   } catch (e) { app.innerHTML = `<div class="empty">Error loading agents: ${e.message}</div>`; }
 }
 
+function renderIPField(ep) {
+  const ip = ep.ip_address || '—';
+  const hist = ep.ip_history || [];
+  if (hist.length <= 1) return field('IP Address', ip);
+  return `
+    <div class="field-row">
+      <span class="field-label">IP Address</span>
+      <span class="field-value mono">${esc(ip)}
+        <button class="btn-inline" onclick="document.getElementById('ip-hist-${esc(ep.id)}').classList.toggle('hidden')">history</button>
+      </span>
+    </div>`;
+}
+
+function renderIPHistory(history) {
+  if (!history || history.length === 0) return '';
+  const id = 'ip-hist-main';
+  return `
+    <div class="card" style="margin-top:0">
+      <div class="card-title">IP Address History
+        <button class="btn-inline" style="margin-left:8px" onclick="document.getElementById('${id}').classList.toggle('hidden')">
+          ${history.length} address${history.length !== 1 ? 'es' : ''}
+        </button>
+      </div>
+      <div id="${id}">
+        <table class="data-table">
+          <thead><tr><th>IP Address</th><th>First Seen</th><th>Last Seen</th></tr></thead>
+          <tbody>
+            ${history.map(h => `
+              <tr>
+                <td class="mono">${esc(h.ip_address)}</td>
+                <td class="mono">${fmtTime(h.first_seen)}</td>
+                <td class="mono">${fmtTime(h.last_seen)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function renderSysInfo(meta) {
+  const sysKeys = ['os_version','kernel','cpu_model','cpu_count','total_ram_mb','disk_total_gb','disk_free_gb'];
+  const hasSys = sysKeys.some(k => meta[k]);
+  if (!hasSys) return '<div class="empty" style="padding:16px">No system info yet.<br><small style="color:var(--text-dim)">Collected on first heartbeat after agent update.</small></div>';
+
+  const fmt = (label, val) => val != null && val !== '' && val !== 0
+    ? field(label, String(val))
+    : '';
+
+  const ramGB = meta.total_ram_mb ? (meta.total_ram_mb / 1024).toFixed(1) + ' GB' : null;
+  const diskStr = (meta.disk_total_gb || meta.disk_free_gb)
+    ? `${meta.disk_free_gb ?? '?'} GB free / ${meta.disk_total_gb ?? '?'} GB total`
+    : null;
+
+  return `
+    ${fmt('Agent Version', meta.agent_version)}
+    ${fmt('OS Version', meta.os_version)}
+    ${fmt('Kernel', meta.kernel)}
+    ${fmt('CPU', meta.cpu_model ? `${meta.cpu_model} (${meta.cpu_count} cores)` : (meta.cpu_count ? `${meta.cpu_count} cores` : null))}
+    ${fmt('RAM', ramGB)}
+    ${fmt('Disk (/)', diskStr)}`;
+}
+
 async function renderAgentDetail(id) {
   app.innerHTML = '<div class="loading">Loading agent…</div>';
   try {
@@ -1065,18 +1127,22 @@ async function renderAgentDetail(id) {
           ${field('ID', ep.id)}
           ${field('Name', ep.name)}
           ${field('Hostname', ep.hostname || ep.name)}
-          ${field('IP Address', ep.ip_address || '—')}
+          ${renderIPField(ep)}
           ${field('OS', ep.os || '—')}
           ${field('Last Seen', relTime(ep.last_seen))}
           ${field('Registered', fmtTime(ep.created_at))}
-          ${Object.entries(ep.metadata || {}).map(([k, v]) => field(k, String(v))).join('')}
         </div>
         <div class="card">
-          <div class="card-title">Recent Alerts <span class="page-sub">(from this endpoint)</span></div>
-          ${alerts.length === 0
-            ? `<div class="empty" style="padding:16px">No alerts linked to this endpoint ID.<br><small style="color:var(--text-dim)">Alerts are only linked when the agent sends events with a valid API key. If the agent was started before registration, restart the service so future events are linked.</small></div>`
-            : renderAlertTable(alerts, false)}
+          <div class="card-title">System Info</div>
+          ${renderSysInfo(ep.metadata || {})}
         </div>
+      </div>
+      ${renderIPHistory(ep.ip_history || [])}
+      <div class="card" style="margin-top:0">
+        <div class="card-title">Recent Alerts <span class="page-sub">(from this endpoint)</span></div>
+        ${alerts.length === 0
+          ? `<div class="empty" style="padding:16px">No alerts linked to this endpoint ID.<br><small style="color:var(--text-dim)">Alerts are only linked when the agent sends events with a valid API key. If the agent was started before registration, restart the service so future events are linked.</small></div>`
+          : renderAlertTable(alerts, false)}
       </div>
       <div class="card" id="forensic-card" style="display:none">
         <div class="card-title">Forensic Results <span class="page-sub" id="forensic-status"></span></div>

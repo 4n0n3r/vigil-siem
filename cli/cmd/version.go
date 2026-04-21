@@ -14,6 +14,10 @@ import (
 // Falls back to "dev" for local builds.
 var Version = "dev"
 
+// BinaryFlavor identifies which binary this is ("vigil" or "vigil-agent").
+// Set at build time: -ldflags "-X 'github.com/vigil/vigil/cmd.BinaryFlavor=vigil-agent'"
+var BinaryFlavor = "vigil"
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the vigil version",

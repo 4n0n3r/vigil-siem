@@ -5,7 +5,8 @@ INSTALL_DIR := /usr/local/bin
 # Version is injected at build time. Override with: make build VERSION=1.2.3
 VERSION ?= dev
 
-LDFLAGS := -s -w -X 'github.com/vigil/vigil/cmd.Version=$(VERSION)'
+LDFLAGS       := -s -w -X 'github.com/vigil/vigil/cmd.Version=$(VERSION)' -X 'github.com/vigil/vigil/cmd.BinaryFlavor=vigil'
+LDFLAGS_AGENT := -s -w -X 'github.com/vigil/vigil/cmd.Version=$(VERSION)' -X 'github.com/vigil/vigil/cmd.BinaryFlavor=vigil-agent'
 
 .PHONY: build build-agent build-cloud install test tidy clean
 
@@ -17,7 +18,7 @@ build:
 ## build-agent: compile the slim agent-only binary into bin/vigil-agent
 build-agent:
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 go build -tags agentonly -trimpath -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY)-agent .
+	CGO_ENABLED=0 go build -tags agentonly -trimpath -ldflags="$(LDFLAGS_AGENT)" -o $(BIN_DIR)/$(BINARY)-agent .
 
 ## build-cloud: compile the vigil binary with cloud collector support (AWS/Azure/GCP)
 build-cloud:

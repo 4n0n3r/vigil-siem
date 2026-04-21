@@ -85,6 +85,7 @@ type heartbeatResponse struct {
 	ID              string   `json:"id"`
 	LastSeen        string   `json:"last_seen"`
 	PendingCommands []string `json:"pending_commands"`
+	LatestVersion   string   `json:"latest_version"`
 }
 
 // ----------------------------------------------------------------------------
@@ -100,6 +101,11 @@ type Config struct {
 	StatusFile        string
 	EndpointID        string
 	HeartbeatInterval time.Duration
+	// Version and BinaryFlavor are injected from cmd.Version / cmd.BinaryFlavor
+	// at startup and sent in every heartbeat so the API knows which agent build
+	// is running. Used by auto-update to fetch the correct release asset.
+	Version       string
+	BinaryFlavor  string
 }
 
 // machineVigilDir returns the machine-wide data directory for agent runtime
@@ -271,6 +277,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			hbInterval = 30 * time.Second
 		}
 		go func() {
+			// Collect static sysinfo once; send on first heartbeat and whenever IP changes.
+			sysInfo := CollectSysInfo()
+			lastIP := ""
+			firstBeat := true
+
 			ticker := time.NewTicker(hbInterval)
 			defer ticker.Stop()
 			for {
@@ -278,11 +289,26 @@ func (a *Agent) Run(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					hbBody := struct {
-						IPAddress string `json:"ip_address"`
-					}{IPAddress: detectedIP()}
+					currentIP := detectedIP()
+					ipChanged := currentIP != lastIP
+
+					type hbRequest struct {
+						IPAddress string   `json:"ip_address"`
+						SysInfo   *SysInfo `json:"sys_info,omitempty"`
+						Version   string   `json:"version,omitempty"`
+					}
+					body := hbRequest{
+						IPAddress: currentIP,
+						Version:   a.cfg.Version,
+					}
+					if firstBeat || ipChanged {
+						body.SysInfo = &sysInfo
+						lastIP = currentIP
+						firstBeat = false
+					}
+
 					var hbResp heartbeatResponse
-					if err := a.apiClient.Patch("/v1/endpoints/"+a.cfg.EndpointID+"/heartbeat", hbBody, &hbResp); err != nil {
+					if err := a.apiClient.Patch("/v1/endpoints/"+a.cfg.EndpointID+"/heartbeat", body, &hbResp); err != nil {
 						a.logError("HEARTBEAT_ERROR", err.Error())
 						continue
 					}
@@ -290,6 +316,10 @@ func (a *Agent) Run(ctx context.Context) error {
 						if cmd == "forensic_collect" {
 							go a.runForensicCollect(ctx)
 						}
+					}
+					// Trigger auto-update if the API signals a newer version.
+					if hbResp.LatestVersion != "" && hbResp.LatestVersion != a.cfg.Version {
+						go TryAutoUpdate(a.cfg.Version, a.cfg.BinaryFlavor, hbResp.LatestVersion, a.logError)
 					}
 				}
 			}

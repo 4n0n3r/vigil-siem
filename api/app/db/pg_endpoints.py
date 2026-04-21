@@ -110,19 +110,88 @@ async def list_endpoints(limit: int = 100, offset: int = 0) -> tuple[list[dict],
     return [dict(r) for r in rows], total
 
 
-async def heartbeat(endpoint_id: str, ip_address: str = "") -> bool:
-    """Update last_seen (and optionally ip_address) for the given endpoint."""
+async def heartbeat(
+    endpoint_id: str,
+    ip_address: str = "",
+    sys_info: dict[str, Any] | None = None,
+) -> bool:
+    """Update last_seen, ip_address, and optionally merge sys_info into metadata."""
     pool = postgres.get_pool()
     if pool is None:
         return False
+
+    now = datetime.now(timezone.utc)
+
     async with pool.acquire() as conn:
-        result = await conn.execute(
-            "UPDATE endpoints SET last_seen = $1, ip_address = $3 WHERE id = $2",
-            datetime.now(timezone.utc),
+        # Merge sys_info into existing metadata JSONB when provided.
+        if sys_info:
+            result = await conn.execute(
+                """
+                UPDATE endpoints
+                SET last_seen  = $1,
+                    ip_address = $3,
+                    metadata   = COALESCE(metadata, '{}'::jsonb) || $4::jsonb
+                WHERE id = $2
+                """,
+                now,
+                endpoint_id,
+                ip_address,
+                json.dumps(sys_info),
+            )
+        else:
+            result = await conn.execute(
+                "UPDATE endpoints SET last_seen = $1, ip_address = $3 WHERE id = $2",
+                now,
+                endpoint_id,
+                ip_address,
+            )
+
+        if result != "UPDATE 1":
+            return False
+
+        # Track IP history: upsert by (endpoint_id, ip_address).
+        if ip_address:
+            await conn.execute(
+                """
+                INSERT INTO endpoint_ip_history (endpoint_id, ip_address, first_seen, last_seen)
+                VALUES ($1, $2, $3, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                endpoint_id,
+                ip_address,
+                now,
+            )
+            # Update last_seen for the existing row if it already existed.
+            await conn.execute(
+                """
+                UPDATE endpoint_ip_history
+                SET last_seen = $3
+                WHERE endpoint_id = $1 AND ip_address = $2
+                """,
+                endpoint_id,
+                ip_address,
+                now,
+            )
+
+    return True
+
+
+async def get_ip_history(endpoint_id: str) -> list[dict]:
+    """Return IP address history for an endpoint, newest first."""
+    pool = postgres.get_pool()
+    if pool is None:
+        return []
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT ip_address, first_seen, last_seen
+            FROM endpoint_ip_history
+            WHERE endpoint_id = $1
+            ORDER BY last_seen DESC
+            """,
             endpoint_id,
-            ip_address,
         )
-    return result == "UPDATE 1"
+    return [dict(r) for r in rows]
 
 
 async def delete_endpoint(endpoint_id: str) -> bool:
