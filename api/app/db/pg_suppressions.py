@@ -149,7 +149,7 @@ async def list_suppressions(include_disabled: bool = False) -> list[dict]:
                 ORDER BY created_at DESC
                 """
             )
-        return [dict(r) for r in rows]
+        return [{**dict(r), "id": str(r["id"])} for r in rows]
     except Exception as exc:  # noqa: BLE001
         logger.warning('{"event": "suppressions_list_error", "error": "%s"}', str(exc))
         return []
@@ -182,7 +182,7 @@ async def create_suppression(
                 name, description, field_path, field_value, match_type, scope,
             )
         await invalidate_cache()
-        return dict(row) if row else None
+        return {**dict(row), "id": str(row["id"])} if row else None
     except Exception as exc:  # noqa: BLE001
         logger.warning('{"event": "suppression_create_error", "error": "%s"}', str(exc))
         return None
@@ -259,7 +259,7 @@ async def _load_from_db() -> list[dict]:
                 ORDER BY created_at
                 """
             )
-        return [dict(r) for r in rows]
+        return [{**dict(r), "id": str(r["id"])} for r in rows]
     except Exception as exc:  # noqa: BLE001
         logger.warning('{"event": "suppressions_load_error", "error": "%s"}', str(exc))
         return []
