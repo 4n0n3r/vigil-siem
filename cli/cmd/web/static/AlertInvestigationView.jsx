@@ -148,7 +148,10 @@ function AIAssistant({alert}){
   const [input,setInput]=useState('');
   const [loading,setLoading]=useState(false);
   const bottomRef=useRef(null);
-  const alertCtx=`Alert: ${alert.rule_name} (${alert.severity.toUpperCase()}) on ${alert.endpoint_id}\nProcess: ${alert.event_snapshot.process} | User: ${alert.event_snapshot.user}\nCmd: ${alert.event_snapshot.cmdline}\nSrc IP: ${alert.event_snapshot.src_ip} → Dst: ${alert.event_snapshot.dst_ip||'internal'}\nMITRE: ${alert.event_snapshot.tactic} | PID: ${alert.event_snapshot.pid}\nTime: ${alert.matched_at.toISOString()}`;
+  const _ap=window.pickSnap(alert.event_snapshot);
+  const alertCtx=_ap.isWeb
+    ?`Alert: ${alert.rule_name} (${alert.severity.toUpperCase()}) on ${alert.endpoint_id}\nPath: ${alert.event_snapshot.path} | Method: ${alert.event_snapshot.method} | Status: ${alert.event_snapshot.status_code}\nClient IP: ${_ap.srcIp} | UA: ${alert.event_snapshot.user_agent}\nTime: ${alert.matched_at.toISOString()}`
+    :`Alert: ${alert.rule_name} (${alert.severity.toUpperCase()}) on ${alert.endpoint_id}\nProcess: ${_ap.process} | User: ${_ap.user}\nCmd: ${_ap.cmdline}\nSrc IP: ${_ap.srcIp} → Dst: ${_ap.dstIp||'internal'}\nMITRE: ${_ap.tactic} | PID: ${_ap.pid}\nTime: ${alert.matched_at.toISOString()}`;
 
   useEffect(()=>{
     let cancelled=false;
@@ -419,11 +422,17 @@ function QuickSuppression({alert}){
   const [sel,setSel]=useState(null);
   const [created,setCreated]=useState(null);
 
-  const SUGGESTIONS=[
-    {id:'ip',  label:`Src IP`,     field_path:'event.src_ip',   field_value:snap.src_ip,   match_type:'exact',  scope:'global'},
-    {id:'proc',label:`Process`,    field_path:'event.process',  field_value:snap.process,  match_type:'exact',  scope:'global'},
-    {id:'user',label:`User`,       field_path:'event.user',     field_value:snap.user,     match_type:'exact',  scope:'global'},
-    {id:'host',label:`Rule on Host`,field_path:'rule_name',     field_value:alert.rule_name,match_type:'exact', scope:alert.endpoint_id},
+  const _sp=window.pickSnap(snap);
+  const SUGGESTIONS=_sp.isWeb?[
+    {id:'ip',  label:'Client IP',  field_path:'event.client_ip', field_value:_sp.srcIp,              match_type:'exact', scope:'global'},
+    {id:'path',label:'Path',       field_path:'event.path',      field_value:snap.path,              match_type:'exact', scope:'global'},
+    {id:'ua',  label:'User Agent', field_path:'event.user_agent',field_value:snap.user_agent,        match_type:'exact', scope:'global'},
+    {id:'host',label:'Rule on Host',field_path:'rule_name',      field_value:alert.rule_name,        match_type:'exact', scope:alert.endpoint_id},
+  ]:[
+    {id:'ip',  label:'Src IP',     field_path:'event.src_ip',   field_value:_sp.srcIp,              match_type:'exact', scope:'global'},
+    {id:'proc',label:'Process',    field_path:'event.process',  field_value:_sp.process,            match_type:'exact', scope:'global'},
+    {id:'user',label:'User',       field_path:'event.user',     field_value:_sp.user,               match_type:'exact', scope:'global'},
+    {id:'host',label:'Rule on Host',field_path:'rule_name',     field_value:alert.rule_name,        match_type:'exact', scope:alert.endpoint_id},
   ];
 
   const active=sel?SUGGESTIONS.find(s=>s.id===sel):null;
@@ -551,16 +560,25 @@ function AlertInvestigationView({alert,onBack}){
           <Card style={{padding:14}}>
             <SectionHead title="Alert Summary"/>
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'10px 16px',marginBottom:12}}>
-              {[
+              {(()=>{const _p=window.pickSnap(alert.event_snapshot);return _p.isWeb?[
                 ['Rule',alert.rule_name,'full'],
                 ['Host',alert.endpoint_id,null],
-                ['User',alert.event_snapshot.user,null],
-                ['Process',alert.event_snapshot.process,null],
-                ['PID',alert.event_snapshot.pid,null],
-                ['Src IP',alert.event_snapshot.src_ip,null],
-                ['Dst IP',alert.event_snapshot.dst_ip||'internal',null],
-                ['MITRE',alert.event_snapshot.tactic,null],
-              ].map(([k,v,span])=>(
+                ['Client IP',_p.srcIp||'—',null],
+                ['Method',alert.event_snapshot.method||'—',null],
+                ['Status',alert.event_snapshot.status_code!=null?String(alert.event_snapshot.status_code):'—',null],
+                ['Path',alert.event_snapshot.path||'—',null],
+                ['Host Header',alert.event_snapshot.host||'—',null],
+                ['UA Type',alert.event_snapshot.ua_category||'—',null],
+              ]:[
+                ['Rule',alert.rule_name,'full'],
+                ['Host',alert.endpoint_id,null],
+                ['User',_p.user||'—',null],
+                ['Process',_p.process||'—',null],
+                ['PID',_p.pid||'—',null],
+                ['Src IP',_p.srcIp||'—',null],
+                ['Dst IP',_p.dstIp||'internal',null],
+                ['MITRE',_p.tactic||'—',null],
+              ];})().map(([k,v,span])=>(
                 <div key={k} style={span==='full'?{gridColumn:'1 / -1'}:{}}>
                   <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
                     textTransform:'uppercase',letterSpacing:'.08em',marginBottom:2}}>{k}</div>
@@ -576,12 +594,12 @@ function AlertInvestigationView({alert,onBack}){
               <div style={{fontFamily:'JetBrains Mono',fontSize:11,color:T.cyan,
                 background:T.bg,border:`1px solid ${T.bd}`,borderRadius:7,
                 padding:'7px 10px',overflow:'auto',whiteSpace:'nowrap'}}>
-                {alert.event_snapshot.cmdline||'—'}
+                {window.pickSnap(alert.event_snapshot).cmdline||'—'}
               </div>
             </div>
           </Card>
 
-          <MitreCard tactic={alert.event_snapshot.tactic}/>
+          {window.pickSnap(alert.event_snapshot).tactic&&<MitreCard tactic={window.pickSnap(alert.event_snapshot).tactic}/>}
           <EventTimeline events={tlEvents}/>
 
           <Card style={{padding:14}}>

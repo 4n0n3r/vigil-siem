@@ -24,8 +24,7 @@ function AlertsView({onInvestigate}){
     if(sevFilter.length>0) r=r.filter(a=>sevFilter.includes(a.severity));
     if(statusFilter!=='all') r=r.filter(a=>a.status===statusFilter);
     if(hostFilter) r=r.filter(a=>a.endpoint_id.toLowerCase().includes(hostFilter.toLowerCase()));
-    if(search) r=r.filter(a=>a.rule_name.toLowerCase().includes(search.toLowerCase())||
-      a.event_snapshot.src_ip.includes(search)||a.endpoint_id.toLowerCase().includes(search.toLowerCase()));
+    if(search){const sl=search.toLowerCase();r=r.filter(a=>{const sn=a.event_snapshot||{};return a.rule_name.toLowerCase().includes(sl)||(sn.src_ip||sn.client_ip||'').includes(sl)||a.endpoint_id.toLowerCase().includes(sl);});}
     r=[...r].sort((a,b)=>{
       let va=a[sortCol]||'',vb=b[sortCol]||'';
       if(va instanceof Date) va=va.getTime(),vb=vb.getTime();
@@ -201,7 +200,7 @@ function AlertsView({onInvestigate}){
                       </td>
                       <td style={{padding:'7px 10px'}}><SevBadge sev={a.severity}/></td>
                       <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{a.endpoint_id}</td>
-                      <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{snap(a).src_ip}</td>
+                      <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{snap(a).src_ip||snap(a).client_ip||'—'}</td>
                       <td style={{padding:'7px 10px'}}>
                         <span style={{fontSize:10,fontFamily:'Space Grotesk',fontWeight:500,
                           color:a.status==='open'?T.amber:a.status==='resolved'?T.green:T.txm,
@@ -222,23 +221,24 @@ function AlertsView({onInvestigate}){
                             borderLeft:`3px solid ${SC[a.severity]}`}}>
                             <div style={{display:'flex',gap:16,alignItems:'flex-start'}}>
                               <div style={{flex:1,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'8px 16px'}}>
-                                {[['User',snap(a).user],['Process',snap(a).process],
-                                  ['Dst IP',snap(a).dst_ip||'—'],['PID',snap(a).pid],
-                                  ['MITRE',snap(a).tactic],['Rule ID',a.rule_id]].map(([k,v])=>(
+                                {(()=>{const _p=window.pickSnap(snap(a));return _p.isWeb
+                                  ?[['Client IP',_p.srcIp||'—'],['Method',snap(a).method||'—'],['Status',snap(a).status_code!=null?String(snap(a).status_code):'—'],['Host',snap(a).host||'—'],['Path',snap(a).path||'—'],['UA Type',snap(a).ua_category||'—']]
+                                  :[['User',_p.user||'—'],['Process',_p.process||'—'],['Dst IP',_p.dstIp||'internal'],['PID',_p.pid||'—'],['MITRE',_p.tactic||'—'],['Rule ID',a.rule_id]];
+                                })().map(([k,v])=>(
                                   <div key={k}>
                                     <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
                                       textTransform:'uppercase',letterSpacing:'.08em'}}>{k}</div>
-                                    <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:2}}>{String(v)}</div>
+                                    <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{String(v)}</div>
                                   </div>
                                 ))}
                               </div>
                               <div style={{width:260,flexShrink:0}}>
                                 <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
-                                  textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Command</div>
+                                  textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>{window.pickSnap(snap(a)).isWeb?'Request':'Command'}</div>
                                 <div style={{fontFamily:'JetBrains Mono',fontSize:10,color:T.cyan,
                                   background:T.bg,border:`1px solid ${T.bd}`,borderRadius:6,padding:'5px 8px',
                                   overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:10}}
-                                  title={snap(a).cmdline}>{snap(a).cmdline||'—'}</div>
+                                  title={window.pickSnap(snap(a)).cmdline}>{window.pickSnap(snap(a)).cmdline||'—'}</div>
                                 <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                                   <button onClick={async()=>{await window.VIGIL_API.acknowledgeAlert(a.id,'');setExpanded(null);}}
                                     style={{fontSize:10,fontFamily:'Space Grotesk',fontWeight:500,

@@ -240,7 +240,11 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
   const analyze=async()=>{
     setAiLoading(true);setAiText('');setAiDone(false);
     try{
-      const r=await window.claude.complete(`SOC analyst — triage this alert concisely.\n\nRule: ${alert.rule_name}\nSeverity: ${alert.severity.toUpperCase()}\nHost: ${alert.endpoint_id}  Process: ${alert.event_snapshot.process}  User: ${alert.event_snapshot.user}\nSrc IP: ${alert.event_snapshot.src_ip}  CMD: ${alert.event_snapshot.cmdline}\nMITRE: ${alert.event_snapshot.tactic}\n\nProvide: (1) What happened — 2 sentences. (2) Immediate recommended action. (3) False-positive likelihood. Direct and technical.`);
+      const _p=pickSnap(alert.event_snapshot);
+      const _ctx=_p.isWeb
+        ?`Path: ${alert.event_snapshot.path} | Method: ${alert.event_snapshot.method} | Status: ${alert.event_snapshot.status_code} | Client IP: ${_p.srcIp} | UA: ${alert.event_snapshot.user_agent}`
+        :`Process: ${_p.process} | User: ${_p.user} | Src IP: ${_p.srcIp} | CMD: ${_p.cmdline} | MITRE: ${_p.tactic}`;
+      const r=await window.claude.complete(`SOC analyst — triage this alert concisely.\n\nRule: ${alert.rule_name}\nSeverity: ${alert.severity.toUpperCase()}\nHost: ${alert.endpoint_id}\n${_ctx}\n\nProvide: (1) What happened — 2 sentences. (2) Immediate recommended action. (3) False-positive likelihood. Direct and technical.`);
       setAiText(r);setAiDone(true);
     }catch(e){setAiText('AI agent unavailable — ' + (e.message||'check connection'));}
     setAiLoading(false);
@@ -269,9 +273,10 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
             <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:T.txm,fontSize:20,lineHeight:1,padding:2,flexShrink:0}}>×</button>
           </div>
           <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
-            {[['Host',alert.endpoint_id],['User',alert.event_snapshot.user],
-              ['Process',alert.event_snapshot.process],['MITRE',alert.event_snapshot.tactic]
-            ].map(([k,v])=>(
+            {(()=>{const _p=pickSnap(alert.event_snapshot);return _p.isWeb
+              ?[['Host',alert.endpoint_id],['Client IP',_p.srcIp],['Path',alert.event_snapshot.path],['Status',String(alert.event_snapshot.status_code??'')]]
+              :[['Host',alert.endpoint_id],['User',_p.user],['Process',_p.process],['MITRE',_p.tactic]];
+            })().map(([k,v])=>(
               <div key={k} style={{background:T.el,borderRadius:6,padding:'4px 8px',border:T.cardBorder}}>
                 <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>{k}</div>
                 <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:1}}>{v}</div>
@@ -284,7 +289,9 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
           <pre style={{fontFamily:'JetBrains Mono',fontSize:11,color:T.cyan,
             background:T.bg,borderRadius:8,border:T.cardBorder,padding:12,
             overflow:'auto',whiteSpace:'pre-wrap',lineHeight:1.6,maxHeight:160}}>
-{JSON.stringify({src_ip:alert.event_snapshot.src_ip,dst_ip:alert.event_snapshot.dst_ip,process:alert.event_snapshot.process,user:alert.event_snapshot.user,cmdline:alert.event_snapshot.cmdline,pid:alert.event_snapshot.pid},null,2)}
+{(()=>{const _p=pickSnap(alert.event_snapshot);return JSON.stringify(_p.isWeb
+  ?{client_ip:_p.srcIp,path:alert.event_snapshot.path,method:alert.event_snapshot.method,status_code:alert.event_snapshot.status_code,user_agent:alert.event_snapshot.user_agent}
+  :{src_ip:_p.srcIp,dst_ip:_p.dstIp,process:_p.process,user:_p.user,cmdline:_p.cmdline,pid:alert.event_snapshot.pid},null,2);})()}
           </pre>
         </div>
         <div style={{padding:'14px 20px',borderBottom:T.cardBorder,flex:1}}>
@@ -325,9 +332,27 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
   );
 }
 
+// Normalizes event_snapshot fields across all event channels (web, windows, linux).
+// Always returns a consistent shape so views don't need per-channel field name logic.
+function pickSnap(snap){
+  if(!snap) return {channel:'',isWeb:false,srcIp:'',dstIp:'',user:'',process:'',pid:'',cmdline:'',tactic:''};
+  const ch=(snap.channel||'').toLowerCase();
+  return {
+    channel: ch,
+    isWeb:   ch==='web',
+    srcIp:   snap.src_ip||snap.client_ip||snap.source_ip||'',
+    dstIp:   snap.dst_ip||snap.destination_ip||'',
+    user:    snap.user||snap.username||snap.remote_user||'',
+    process: snap.process||snap.process_name||snap.image||'',
+    pid:     snap.pid!=null?String(snap.pid):'',
+    cmdline: snap.cmdline||snap.command_line||snap.request_line||snap.path||'',
+    tactic:  snap.tactic||snap.mitre_tactic||'',
+  };
+}
+
 Object.assign(window,{
   ThemeCtx,useT,useSev,SEV_C_DARK,SEV_C_LIGHT,sevBg,
   Logo,Sparkline,StatCard,SevBadge,Card,SectionHead,Pill,
-  Topbar,Sidebar,AlertDrawer,
+  Topbar,Sidebar,AlertDrawer,pickSnap,
 });
 })();
