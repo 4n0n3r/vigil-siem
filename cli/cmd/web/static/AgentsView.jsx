@@ -33,7 +33,7 @@ function AgentsView({onInvestigate}){
     </div>
   );
 
-  const agentAlerts=D.ALERTS.filter(a=>a.endpoint_id===sel.hostname||a.endpoint_id===sel.name);
+  const agentAlerts=D.ALERTS.filter(a=>a.endpoint_id===sel.id||a.endpoint_id===sel.hostname||a.endpoint_id===sel.name);
   const openAlerts=agentAlerts.filter(a=>a.status==='open');
   const ipHistory=sel.ip_history||[];
 
@@ -68,7 +68,7 @@ function AgentsView({onInvestigate}){
         <div style={{flex:1,overflowY:'auto',padding:6}}>
           {D.AGENTS.map(a=>{
             const isSel=sel?.id===a.id;
-            const aAlerts=D.ALERTS.filter(x=>(x.endpoint_id===a.hostname||x.endpoint_id===a.name)&&x.status==='open').length;
+            const aAlerts=D.ALERTS.filter(x=>(x.endpoint_id===a.id||x.endpoint_id===a.hostname||x.endpoint_id===a.name)&&x.status==='open').length;
             return(
               <div key={a.id} onClick={()=>{setSel(a);setTab('overview');}}
                 style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import uuid
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -195,9 +196,14 @@ async def delete_suppression(suppression_id: str) -> bool:
         return False
 
     try:
+        sid = uuid.UUID(suppression_id)
+    except ValueError:
+        return False
+
+    try:
         async with pool.acquire() as conn:
             result = await conn.execute(
-                "DELETE FROM suppressions WHERE id = $1", suppression_id
+                "DELETE FROM suppressions WHERE id = $1", sid
             )
         await invalidate_cache()
         return result == "DELETE 1"
@@ -214,10 +220,15 @@ async def toggle_suppression(suppression_id: str, enabled: bool) -> bool:
         return False
 
     try:
+        sid = uuid.UUID(suppression_id)
+    except ValueError:
+        return False
+
+    try:
         async with pool.acquire() as conn:
             result = await conn.execute(
                 "UPDATE suppressions SET enabled = $1 WHERE id = $2",
-                enabled, suppression_id,
+                enabled, sid,
             )
         await invalidate_cache()
         return result == "UPDATE 1"

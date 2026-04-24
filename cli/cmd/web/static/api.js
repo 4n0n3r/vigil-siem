@@ -48,7 +48,7 @@
     const meta = e.metadata || {};
     const si = meta.sys_info || {};
     return {
-      id: e.id, name: e.name, hostname: e.hostname, os: e.os || '—',
+      id: e.id, name: e.name || e.hostname || '—', hostname: e.hostname || e.name || '—', os: e.os || '—',
       ip: e.ip_address || '—',
       ip_history: (e.ip_history || []).map(h => ({
         ip: h.ip_address, first_seen: new Date(h.first_seen), last_seen: new Date(h.last_seen),

@@ -14,6 +14,8 @@ function SuppressionsView(){
   const [deleteConfirm,setDeleteConfirm]=useState(null);
   const [form,setForm]=useState({name:'',description:'',field_path:'',field_value:'',match_type:'exact',scope:'global'});
   const [formSaved,setFormSaved]=useState(false);
+  const [error,setError]=useState(null);
+  const showError=(msg)=>{setError(msg);setTimeout(()=>setError(null),6000);};
 
   const sups=D.SUPPRESSIONS;
 
@@ -23,12 +25,14 @@ function SuppressionsView(){
   const toggle=async(id)=>{
     const s=sups.find(x=>x.id===id);
     if(!s)return;
-    await window.VIGIL_API.toggleSuppression(id,!s.enabled);
+    const ok=await window.VIGIL_API.toggleSuppression(id,!s.enabled);
+    if(!ok)showError(`Failed to ${s.enabled?'disable':'enable'} suppression. Check API connectivity.`);
   };
 
   const del=async(id)=>{
     setDeleteConfirm(null);
-    await window.VIGIL_API.deleteSuppression(id);
+    const ok=await window.VIGIL_API.deleteSuppression(id);
+    if(!ok)showError('Failed to delete suppression. Check API connectivity.');
   };
 
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -60,6 +64,8 @@ function SuppressionsView(){
     if(result){
       setForm({name:'',description:'',field_path:'',field_value:'',match_type:'exact',scope:'global'});
       setFormSaved(true);setShowCreate(false);setTimeout(()=>setFormSaved(false),3000);
+    } else {
+      showError('Failed to create suppression. Check that the API is reachable and you have a valid API key.');
     }
   };
 
@@ -87,6 +93,15 @@ function SuppressionsView(){
             + New Suppression
           </button>
         </div>
+
+        {error&&(
+          <div className="anim-in" style={{padding:'10px 14px',background:T.red+'10',
+            border:`1px solid ${T.red}33`,borderRadius:8,display:'flex',alignItems:'center',gap:8}}>
+            <div style={{width:6,height:6,borderRadius:'50%',background:T.red,flexShrink:0}}/>
+            <span style={{fontSize:12,fontFamily:'Space Grotesk',fontWeight:500,color:T.red,flex:1}}>{error}</span>
+            <button onClick={()=>setError(null)} style={{background:'none',border:'none',color:T.red,cursor:'pointer',fontSize:16,padding:0}}>×</button>
+          </div>
+        )}
 
         {formSaved&&(
           <div className="anim-in" style={{padding:'10px 14px',background:T.green+'10',
