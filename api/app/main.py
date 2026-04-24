@@ -30,6 +30,7 @@ from app.routes import tokens as tokens_router_module
 from app.routes import connectors as connectors_router_module
 from app.routes import feed as feed_router_module
 from app.routes import suppressions as suppressions_router_module
+from app.routes import drains as drains_router_module
 from app.db import clickhouse, postgres, pg_endpoints
 from app.sigma import loader
 
@@ -200,3 +201,4 @@ app.include_router(tokens_router_module.router, prefix="/v1")
 app.include_router(connectors_router_module.router)
 app.include_router(feed_router_module.router)
 app.include_router(suppressions_router_module.router, prefix="/v1")
+app.include_router(drains_router_module.router)
