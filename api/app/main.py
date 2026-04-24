@@ -78,7 +78,8 @@ REQUIRE_AUTH = os.environ.get("VIGIL_REQUIRE_AUTH", "true").lower() not in ("fal
 # Paths that never require an endpoint API key (they have their own auth or are truly open).
 _PUBLIC_PATHS = {"/v1/status", "/v1/endpoints/register"}
 # Prefixes that are exempt from endpoint-key auth (token routes have their own admin-key check).
-_PUBLIC_PREFIXES = ("/v1/tokens",)
+# /drains uses its own HMAC signature verification internally.
+_PUBLIC_PREFIXES = ("/v1/tokens", "/drains")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
