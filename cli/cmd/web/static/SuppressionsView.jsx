@@ -3,7 +3,7 @@
 const {useState,useMemo} = React;
 const D = window.VIGIL_DATA;
 
-const FIELD_SUGGESTIONS=['event.src_ip','event.dst_ip','event.user','event.process','event.cmdline','event.host','rule_name','event.tactic'];
+const FIELD_SUGGESTIONS=['rule_name','client_ip','path','user_agent','event_data.IpAddress','event_data.TargetUserName','event_data.NewProcessName','_HOSTNAME','_COMM'];
 
 function SuppressionsView(){
   const T=useT();

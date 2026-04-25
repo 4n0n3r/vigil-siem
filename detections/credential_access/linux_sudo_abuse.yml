@@ -1,22 +1,30 @@
-title: Linux Sudo Authentication Failure
+title: SSH Brute Force Success
 id: linux-sudo-abuse
 status: stable
-description: Detects repeated sudo authentication failures which may indicate privilege escalation attempts.
+description: >
+  Fires when a successful SSH password authentication is preceded by 3 or more
+  failed attempts from the same source IP within a 10-minute window. Matches
+  only sshd "Accepted password" messages to avoid false positives from CRON
+  or other PAM session events that share "session opened for user" language.
 author: Vigil
-date: 2026/03/24
+date: 2026/04/22
 tags:
+  - attack.initial_access
   - attack.credential_access
-  - attack.t1548.003
+  - attack.t1110
+  - attack.t1110.001
 logsource:
   product: linux
   service: auth
 detection:
   selection:
-    source: syslog:auth
-    message|contains:
-      - 'sudo:'
-      - 'FAILED'
+    source|startswith: "syslog:"
+    message|contains: "Accepted password"
   condition: selection
+vigil_correlation:
+  failure_pattern: "Failed password"
+  window_minutes: 10
+  min_failures: 3
 falsepositives:
-  - Legitimate failed sudo attempts by users
-level: medium
+  - Legitimate user who mistyped password multiple times then succeeded
+level: high

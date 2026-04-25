@@ -247,12 +247,12 @@ should identify the appropriate skill and execute the steps in order.
 
 | Skill | Trigger | Steps |
 |---|---|---|
-| `triage` | "what's happening?" | `vigil alerts list --severity high`, group by severity |
-| `investigate_alert <id>` | alert ID given | `get` alert → `search` event context → `acknowledge` with note |
-| `hunt_brute_force` | credential attacks suspected | search 4625/4648, count by source |
-| `hunt_lateral_movement` | lateral spread suspected | search 4648 + 4624 type 3, correlate hosts |
-| `deploy_detection <file>` | new Sigma rule to deploy | `create` rule → ingest test event → verify `alert_ids` non-empty |
-| `forensic_sweep` | post-incident artifact grab | `vigil forensic collect` → search `forensic:` results |
+| `triage` | "what's happening?" | `vigil alerts list --severity high --output json`, group by severity |
+| `investigate_alert <id>` | alert ID given | `vigil alerts get <id> --output json` → search event context → `acknowledge` with note |
+| `hunt_brute_force` | credential attacks suspected | `vigil hunt --query "event_id:4625" --agg event_data.IpAddress --output json` |
+| `hunt_lateral_movement` | lateral spread suspected | `vigil hunt --query "event_id:4648" --agg event_data.TargetServerName --output json` |
+| `deploy_detection <file>` | new Sigma rule to deploy | `vigil detections create --file <rule.yaml> --output json` → ingest test event → verify `alert_ids` non-empty |
+| `forensic_sweep` | post-incident artifact grab | `vigil forensic collect --output json` → `vigil search --query "forensic:" --output json` |
 | `build_dashboard` | reporting requested | `vigil alerts visualize --serve` |
 
 Each skill maps to a defined sequence of CLI commands with `--output json` throughout.

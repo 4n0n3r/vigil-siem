@@ -425,15 +425,15 @@ function QuickSuppression({alert}){
 
   const _sp=window.pickSnap(snap);
   const SUGGESTIONS=_sp.isWeb?[
-    {id:'ip',  label:'Client IP',  field_path:'event.client_ip', field_value:_sp.srcIp,              match_type:'exact', scope:'global'},
-    {id:'path',label:'Path',       field_path:'event.path',      field_value:snap.path,              match_type:'exact', scope:'global'},
-    {id:'ua',  label:'User Agent', field_path:'event.user_agent',field_value:snap.user_agent,        match_type:'exact', scope:'global'},
-    {id:'host',label:'Rule on Host',field_path:'rule_name',      field_value:alert.rule_name,        match_type:'exact', scope:alert.endpoint_id},
+    {id:'ip',  label:'Client IP',  field_path:'client_ip',  field_value:_sp.srcIp,       match_type:'exact', scope:'global'},
+    {id:'path',label:'Path',       field_path:'path',        field_value:snap.path,       match_type:'exact', scope:'global'},
+    {id:'ua',  label:'User Agent', field_path:'user_agent',  field_value:snap.user_agent, match_type:'exact', scope:'global'},
+    {id:'host',label:'Rule on Host',field_path:'rule_name',  field_value:alert.rule_name, match_type:'exact', scope:alert.endpoint_id},
   ]:[
-    {id:'ip',  label:'Src IP',     field_path:'event.src_ip',   field_value:_sp.srcIp,              match_type:'exact', scope:'global'},
-    {id:'proc',label:'Process',    field_path:'event.process',  field_value:_sp.process,            match_type:'exact', scope:'global'},
-    {id:'user',label:'User',       field_path:'event.user',     field_value:_sp.user,               match_type:'exact', scope:'global'},
-    {id:'host',label:'Rule on Host',field_path:'rule_name',     field_value:alert.rule_name,        match_type:'exact', scope:alert.endpoint_id},
+    {id:'ip',  label:'Src IP',     field_path:'event_data.IpAddress', field_value:_sp.srcIp,   match_type:'exact', scope:'global'},
+    {id:'proc',label:'Process',    field_path:'event_data.NewProcessName', field_value:_sp.process, match_type:'contains', scope:'global'},
+    {id:'user',label:'User',       field_path:'event_data.TargetUserName', field_value:_sp.user, match_type:'exact', scope:'global'},
+    {id:'host',label:'Rule on Host',field_path:'rule_name',  field_value:alert.rule_name, match_type:'exact', scope:alert.endpoint_id},
   ];
 
   const active=sel?SUGGESTIONS.find(s=>s.id===sel):null;

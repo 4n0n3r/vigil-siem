@@ -382,12 +382,20 @@ func hasTraversal(path, query string) bool {
 		strings.Contains(combined, "..%5c")
 }
 
-var sqlPattern = regexp.MustCompile(
+// sqlPatternPath excludes "--" because double-hyphens are common in URL slugs
+// (e.g. /lander/my-page--copy-1). SQL keywords in the path are still flagged.
+var sqlPatternPath = regexp.MustCompile(
+	`(?i)(\bselect\b|\bunion\b|\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|\bexec\b|'.*;|xp_|\bor\b\s+\d+\s*=\s*\d+|\band\b\s+\d+\s*=\s*\d+)`,
+)
+
+// sqlPatternQuery includes "--" because SQL comment sequences in query strings
+// are a reliable injection indicator unlike path slugs.
+var sqlPatternQuery = regexp.MustCompile(
 	`(?i)(\bselect\b|\bunion\b|\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|\bexec\b|--|'.*;|xp_|\bor\b\s+\d+\s*=\s*\d+|\band\b\s+\d+\s*=\s*\d+)`,
 )
 
 func hasSQLChars(path, query string) bool {
-	return sqlPattern.MatchString(path + " " + query)
+	return sqlPatternPath.MatchString(path) || sqlPatternQuery.MatchString(query)
 }
 
 var adminPrefixes = []string{

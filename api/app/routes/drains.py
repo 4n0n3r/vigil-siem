@@ -230,8 +230,8 @@ async def vercel_drain(request: Request) -> Response:
         return matches
 
     for rule, stored in await asyncio.to_thread(_eval):
-        if pg_suppressions.is_suppressed(stored.event, suppressions):
-            await pg_suppressions.record_suppression_hit(stored.event, suppressions)
+        if pg_suppressions.is_suppressed(stored.event, suppressions, rule_name=rule["name"]):
+            await pg_suppressions.record_suppression_hit(stored.event, suppressions, rule_name=rule["name"])
             continue
         await pg_alerts.save_alert(rule, stored)
 

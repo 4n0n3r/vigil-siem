@@ -20,7 +20,7 @@ from app.models import (
     StoredEvent,
 )
 from app import store
-from app.sigma import loader, evaluator
+from app.sigma import loader, evaluator, correlation
 from app.db import pg_alerts, pg_endpoints, pg_suppressions
 
 logger = logging.getLogger(__name__)
@@ -89,10 +89,28 @@ async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
 
     alert_ids: list[str] = []
     for rule in matched_rules:
-        # P1: check global suppressions before persisting the alert.
-        if pg_suppressions.is_suppressed(stored.event, suppressions):
-            await pg_suppressions.record_suppression_hit(stored.event, suppressions)
+        # P1: check suppressions (global or endpoint-scoped) before persisting.
+        if pg_suppressions.is_suppressed(stored.event, suppressions, rule_name=rule["name"], endpoint_id=endpoint_id):
+            await pg_suppressions.record_suppression_hit(stored.event, suppressions, rule_name=rule["name"], endpoint_id=endpoint_id)
             continue
+
+        # P2: correlation gate — if rule has vigil_correlation config, only fire
+        # when enough failure events precede this success event from the same IP.
+        corr_cfg = rule.get("vigil_correlation")
+        if corr_cfg:
+            ip = correlation.extract_source_ip(
+                stored.event.get("message") or stored.event.get("MESSAGE", "")
+            )
+            if not ip:
+                continue
+            fail_count = await store.count_events_in_window(
+                pattern=corr_cfg.get("failure_pattern", "Failed password"),
+                ip=ip,
+                window_minutes=int(corr_cfg.get("window_minutes", 10)),
+            )
+            if fail_count < int(corr_cfg.get("min_failures", 3)):
+                continue
+
         alert_id = await pg_alerts.save_alert(rule, stored)
         if alert_id:
             alert_ids.append(alert_id)
@@ -176,9 +194,26 @@ async def ingest_batch(request: Request, body: BatchIngestRequest) -> BatchInges
     total_alerts = 0
     for rule, stored in matches:
         # P1: suppression check before persisting.
-        if pg_suppressions.is_suppressed(stored.event, suppressions):
-            await pg_suppressions.record_suppression_hit(stored.event, suppressions)
+        if pg_suppressions.is_suppressed(stored.event, suppressions, rule_name=rule["name"], endpoint_id=endpoint_id):
+            await pg_suppressions.record_suppression_hit(stored.event, suppressions, rule_name=rule["name"], endpoint_id=endpoint_id)
             continue
+
+        # P2: correlation gate (same logic as single-event path).
+        corr_cfg = rule.get("vigil_correlation")
+        if corr_cfg:
+            ip = correlation.extract_source_ip(
+                stored.event.get("message") or stored.event.get("MESSAGE", "")
+            )
+            if not ip:
+                continue
+            fail_count = await store.count_events_in_window(
+                pattern=corr_cfg.get("failure_pattern", "Failed password"),
+                ip=ip,
+                window_minutes=int(corr_cfg.get("window_minutes", 10)),
+            )
+            if fail_count < int(corr_cfg.get("min_failures", 3)):
+                continue
+
         alert_id = await pg_alerts.save_alert(rule, stored)
         if alert_id:
             total_alerts += 1

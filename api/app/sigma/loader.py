@@ -42,7 +42,7 @@ async def load_rules_from_db() -> None:
             new_cache: list[dict] = []
             for row in rows:
                 try:
-                    parsed, channels = _parse_sigma_detection(row["sigma_yaml"])
+                    parsed, channels, vigil_corr = _parse_sigma_detection(row["sigma_yaml"])
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         '{"event": "sigma_parse_error", "rule_id": "%s", "error": "%s"}',
@@ -61,6 +61,8 @@ async def load_rules_from_db() -> None:
                         # P0: channel filter derived from logsource block.
                         # Empty list = no constraint (match any channel).
                         "channel_filter": [c.lower() for c in channels],
+                        # Vigil correlation extension (None if not present).
+                        "vigil_correlation": vigil_corr,
                     }
                 )
 
@@ -133,11 +135,13 @@ def channel_filter_for_logsource(logsource: dict) -> list[str]:
     return _LOGSOURCE_CHANNEL_MAP.get(service, [])
 
 
-def _parse_sigma_detection(sigma_yaml: str) -> tuple[dict, list[str]]:
+def _parse_sigma_detection(sigma_yaml: str) -> tuple[dict, list[str], dict | None]:
     """Parse a Sigma YAML string.
 
-    Returns ``(detection_block, channel_filter)`` where *channel_filter* is
-    a list of expected channel strings (may be empty = no constraint).
+    Returns ``(detection_block, channel_filter, vigil_correlation)`` where
+    *channel_filter* is a list of expected channel strings (may be empty = no
+    constraint) and *vigil_correlation* is the optional Vigil extension block
+    (None if absent).
     Raises on parse error — caller should catch.
     """
     doc = yaml.safe_load(sigma_yaml)
@@ -151,4 +155,8 @@ def _parse_sigma_detection(sigma_yaml: str) -> tuple[dict, list[str]]:
     logsource = doc.get("logsource", {})
     channels = channel_filter_for_logsource(logsource)
 
-    return detection, channels
+    vigil_corr = doc.get("vigil_correlation")
+    if vigil_corr is not None and not isinstance(vigil_corr, dict):
+        vigil_corr = None
+
+    return detection, channels, vigil_corr

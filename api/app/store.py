@@ -158,6 +158,24 @@ async def count_last_24h() -> int:
     return await asyncio.to_thread(_fallback_count_24h)
 
 
+async def count_events_in_window(
+    pattern: str,
+    ip: str,
+    window_minutes: int,
+) -> int:
+    """Count events containing both *pattern* and *ip* in the last *window_minutes*."""
+    client = _get_ch_client()
+    if client is not None:
+        try:
+            return await asyncio.to_thread(_ch_count_in_window, client, pattern, ip, window_minutes)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                '{"event": "ch_count_window_failed", "error": "%s", "fallback": true}',
+                str(exc).replace('"', "'"),
+            )
+    return await asyncio.to_thread(_fallback_count_in_window, pattern, ip, window_minutes)
+
+
 # ---------------------------------------------------------------------------
 # ClickHouse helpers (sync — called via asyncio.to_thread)
 # ---------------------------------------------------------------------------
@@ -345,6 +363,30 @@ def _ch_count_24h(client) -> int:
     if rows:
         return int(rows[0][0])
     return 0
+
+
+def _ch_count_in_window(client, pattern: str, ip: str, window_minutes: int) -> int:
+    result = client.query(
+        "SELECT count() FROM vigil_events "
+        "WHERE event LIKE {pattern:String} "
+        "AND event LIKE {ip:String} "
+        "AND timestamp > now() - INTERVAL {window:UInt32} MINUTE",
+        parameters={"pattern": f"%{pattern}%", "ip": f"%{ip}%", "window": window_minutes},
+    )
+    rows = result.result_rows
+    return int(rows[0][0]) if rows else 0
+
+
+def _fallback_count_in_window(pattern: str, ip: str, window_minutes: int) -> int:
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    count = 0
+    for ev in _fallback_events:
+        if _ensure_tz(ev.timestamp) < cutoff:
+            continue
+        haystack = (json.dumps(ev.event) + ev.source).lower()
+        if pattern.lower() in haystack and ip in haystack:
+            count += 1
+    return count
 
 
 # ---------------------------------------------------------------------------

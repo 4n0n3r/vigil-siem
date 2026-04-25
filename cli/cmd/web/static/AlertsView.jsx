@@ -92,7 +92,7 @@ function AlertsView({onInvestigate}){
                 padding:'6px 8px 6px 27px',color:T.tx,fontFamily:'Inter',fontSize:11,outline:'none'}}/>
           </div>
           <div style={{display:'flex',gap:3}}>
-            {['open','acknowledged','resolved','all'].map(s=>(
+            {['open','acknowledged','suppressed','resolved','all'].map(s=>(
               <Pill key={s} label={s} active={statusFilter===s} onClick={()=>{setStatusFilter(s);setPage(0);}}/>
             ))}
           </div>
@@ -203,7 +203,11 @@ function AlertsView({onInvestigate}){
                       <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{window.pickSnap(snap(a)).srcIp||'—'}</td>
                       <td style={{padding:'7px 10px'}}>
                         <span style={{fontSize:10,fontFamily:'Space Grotesk',fontWeight:500,
-                          color:a.status==='open'?T.amber:a.status==='resolved'?T.green:T.txm,
+                          color:a.status==='open'?T.amber:a.status==='resolved'?T.green:a.status==='suppressed'?T.purple:T.txm,
+                          background:a.status==='suppressed'?T.purple+'14':undefined,
+                          border:a.status==='suppressed'?`1px solid ${T.purple}33`:undefined,
+                          borderRadius:a.status==='suppressed'?4:undefined,
+                          padding:a.status==='suppressed'?'1px 5px':undefined,
                           textTransform:'capitalize'}}>{a.status}</span>
                       </td>
                       <td style={{padding:'7px 10px',textAlign:'right'}}>

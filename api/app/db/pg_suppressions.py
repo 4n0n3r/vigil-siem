@@ -61,13 +61,20 @@ def _get_field(event: dict, field_path: str) -> Any:
     return _get_field(val, parts[1])
 
 
-def _matches_suppression(event: dict, s: dict) -> bool:
-    actual = _get_field(event, s["field_path"])
-    if actual is None:
-        return False
-    actual_str   = str(actual).lower()
+def _matches_suppression(event: dict, s: dict, rule_name: str = "") -> bool:
+    field_path   = s["field_path"]
     expected_str = str(s["field_value"]).lower()
     match_type   = s.get("match_type", "exact")
+
+    # rule_name is not a key in the raw event dict — compare against the
+    # matched rule name passed in from the evaluation loop.
+    if field_path == "rule_name":
+        actual_str = rule_name.lower()
+    else:
+        actual = _get_field(event, field_path)
+        if actual is None:
+            return False
+        actual_str = str(actual).lower()
 
     if match_type == "exact":
         return actual_str == expected_str
@@ -75,18 +82,29 @@ def _matches_suppression(event: dict, s: dict) -> bool:
         return expected_str in actual_str
     if match_type == "regex":
         try:
-            return bool(re.search(s["field_value"], str(actual), re.IGNORECASE))
+            return bool(re.search(s["field_value"], actual_str, re.IGNORECASE))
         except re.error:
             return False
     return False
 
 
-def is_suppressed(event: dict, suppressions: list[dict]) -> bool:
-    """Return True if the event matches any active global suppression."""
+def is_suppressed(
+    event: dict,
+    suppressions: list[dict],
+    rule_name: str = "",
+    endpoint_id: str = "",
+) -> bool:
+    """Return True if the event+rule matches any active suppression.
+
+    Scope semantics:
+      "global"      — applies to all endpoints
+      <endpoint_id> — applies only to that endpoint
+    """
     for s in suppressions:
-        if s.get("scope", "global") != "global":
+        scope = s.get("scope", "global")
+        if scope != "global" and scope != endpoint_id:
             continue
-        if _matches_suppression(event, s):
+        if _matches_suppression(event, s, rule_name=rule_name):
             return True
     return False
 
@@ -95,7 +113,12 @@ def is_suppressed(event: dict, suppressions: list[dict]) -> bool:
 # Side-effect: increment hit_count when a suppression fires
 # ---------------------------------------------------------------------------
 
-async def record_suppression_hit(event: dict, suppressions: list[dict]) -> None:
+async def record_suppression_hit(
+    event: dict,
+    suppressions: list[dict],
+    rule_name: str = "",
+    endpoint_id: str = "",
+) -> None:
     """Increment hit_count + last_hit_at on the first matching suppression."""
     from app.db import postgres  # noqa: PLC0415
 
@@ -104,9 +127,10 @@ async def record_suppression_hit(event: dict, suppressions: list[dict]) -> None:
         return
 
     for s in suppressions:
-        if s.get("scope", "global") != "global":
+        scope = s.get("scope", "global")
+        if scope != "global" and scope != endpoint_id:
             continue
-        if _matches_suppression(event, s):
+        if _matches_suppression(event, s, rule_name=rule_name):
             try:
                 async with pool.acquire() as conn:
                     await conn.execute(

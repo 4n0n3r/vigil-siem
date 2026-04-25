@@ -252,6 +252,7 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
 
   const doAction=async(action)=>{
     if(action==='Acknowledge') await window.VIGIL_API.acknowledgeAlert(alert.id);
+    else if(action==='Suppress') await window.VIGIL_API.batchAlerts([alert.id],'suppress');
     else if(action==='Resolve') await window.VIGIL_API.batchAlerts([alert.id],'resolve');
     onClose();
   };
