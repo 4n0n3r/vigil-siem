@@ -46,13 +46,14 @@
     const lastSeen = e.last_seen ? new Date(e.last_seen) : null;
     const secsAgo = lastSeen ? (now - lastSeen.getTime()) / 1000 : Infinity;
     const meta = e.metadata || {};
-    const si = meta.sys_info || {};
-    const osStr = e.os || '';
+    // Heartbeat merges sys_info fields flat into metadata (not nested under sys_info key)
+    const osStr = e.os || meta.os_version || '';
+    const ipStr = e.ip_address || '';
 
     // Infer endpoint type from metadata or available fields
     let type = e.endpoint_type || meta.endpoint_type || '';
     if (!type) {
-      if (!osStr && !e.ip_address) type = 'drain';
+      if (!osStr && !ipStr) type = 'drain';
       else if (osStr.toLowerCase().match(/linux|ubuntu|debian|centos|fedora|rhel|arch/)) type = 'linux';
       else if (osStr.toLowerCase().includes('windows')) type = 'windows';
       else type = 'agent';
@@ -64,15 +65,15 @@
 
     return {
       id: e.id, name: e.name || e.hostname || '—', hostname: e.hostname || e.name || '—',
-      os: osStr || '—', ip: e.ip_address || '—',
+      os: osStr || '—', ip: ipStr || '—',
       ip_history: (e.ip_history || []).map(h => ({
         ip: h.ip_address, first_seen: new Date(h.first_seen), last_seen: new Date(h.last_seen),
       })),
       status, last_seen: lastSeen || new Date(0),
       version: meta.version || meta.agent_version || '—',
       type,
-      alerts: 0, cpu: si.cpu_usage_pct || 0, ram: si.ram_usage_pct || 0,
-      disk_free_gb: si.disk_free_gb || 0,
+      alerts: 0, cpu: 0, ram: 0,
+      disk_free_gb: meta.disk_free_gb || 0,
       created_at: e.created_at ? new Date(e.created_at) : null,
     };
   }
