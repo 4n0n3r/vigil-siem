@@ -5,6 +5,9 @@ const D = window.VIGIL_DATA;
 
 const QUICK_COMMANDS = ['vigil status','vigil alerts list --severity critical','vigil rules list --enabled','netstat -an | head -20'];
 
+const TYPE_LABELS = {drain:'Web Drain',linux:'Linux',windows:'Windows',agent:'Agent'};
+const TYPE_COLORS_FN = T => ({drain:T.purple,linux:T.amber,windows:T.cyan,agent:T.green});
+
 function AgentsView({onInvestigate}){
   const T=useT();const SC=useSev();
   const [sel,setSel]=useState(()=>D.AGENTS[0]||null);
@@ -12,7 +15,8 @@ function AgentsView({onInvestigate}){
   const [cmd,setCmd]=useState('');
   const [cmdHistory,setCmdHistory]=useState([]);
   const [cmdSent,setCmdSent]=useState(false);
-  const statusColor={online:T.green,stale:T.amber,offline:T.red};
+  const statusColor={online:T.green,stale:T.amber,offline:T.red,unknown:T.txm};
+  const typeColor=TYPE_COLORS_FN(T);
 
   // Keep sel in sync when AGENTS refresh
   useEffect(()=>{
@@ -26,6 +30,7 @@ function AgentsView({onInvestigate}){
 
   const fmtDate=d=>d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';
   const fmtAge=d=>{if(!d)return'—';const s=Math.floor((Date.now()-new Date(d))/1000);if(s<60)return`${s}s ago`;if(s<3600)return`${Math.floor(s/60)}m ago`;if(s<86400)return`${Math.floor(s/3600)}h ago`;return`${Math.floor(s/86400)}d ago`;};
+  const fmtDateTime=d=>{if(!d)return'—';const dt=new Date(d);return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' · '+dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});};
 
   if(!sel) return(
     <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -36,6 +41,8 @@ function AgentsView({onInvestigate}){
   const agentAlerts=D.ALERTS.filter(a=>a.endpoint_id===sel.id||a.endpoint_id===sel.hostname||a.endpoint_id===sel.name);
   const openAlerts=agentAlerts.filter(a=>a.status==='open');
   const ipHistory=sel.ip_history||[];
+  const latestAlert=agentAlerts.length>0?agentAlerts.reduce((a,b)=>a.matched_at>b.matched_at?a:b):null;
+  const latestAlertTime=latestAlert?fmtDateTime(latestAlert.matched_at):'—';
 
   const sendCommand=async()=>{
     if(!cmd.trim())return;
@@ -47,7 +54,7 @@ function AgentsView({onInvestigate}){
   };
 
   const online=D.AGENTS.filter(a=>a.status==='online').length;
-  const stale=D.AGENTS.filter(a=>a.status==='stale').length;
+  const stale=D.AGENTS.filter(a=>a.status==='stale'||a.status==='unknown').length;
   const offline=D.AGENTS.filter(a=>a.status==='offline').length;
 
   return(
@@ -84,7 +91,9 @@ function AgentsView({onInvestigate}){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,color:isSel?T.cyan:T.tx,fontFamily:'Space Grotesk',fontWeight:isSel?600:400,
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.hostname}</div>
-                  <div style={{fontSize:9,color:T.txm,fontFamily:'JetBrains Mono',marginTop:1}}>{a.os.split(' ')[0]} · {a.ip}</div>
+                  <div style={{fontSize:9,color:T.txm,fontFamily:'JetBrains Mono',marginTop:1}}>
+                    {a.type==='drain' ? `web drain · ${a.name}` : `${a.os.split(' ')[0]} · ${a.ip}`}
+                  </div>
                 </div>
                 {aAlerts>0&&<span style={{fontSize:9,fontFamily:'JetBrains Mono',
                   color:aAlerts>10?T.red:T.amber,background:(aAlerts>10?T.red:T.amber)+'14',
@@ -105,11 +114,16 @@ function AgentsView({onInvestigate}){
               boxShadow:sel.status==='online'?`0 0 7px ${T.green}`:'none',
               animation:sel.status==='online'?'pdot 2.5s infinite':'none',flexShrink:0}}/>
             <span style={{fontFamily:'Space Grotesk',fontWeight:700,fontSize:16,color:T.tx}}>{sel.hostname}</span>
-            <span style={{fontSize:10,fontFamily:'JetBrains Mono',color:statusColor[sel.status],
-              background:statusColor[sel.status]+'12',border:`1px solid ${statusColor[sel.status]}33`,
+            <span style={{fontSize:10,fontFamily:'JetBrains Mono',color:statusColor[sel.status]||T.txm,
+              background:(statusColor[sel.status]||T.txm)+'12',border:`1px solid ${statusColor[sel.status]||T.txm}33`,
               borderRadius:5,padding:'2px 8px',textTransform:'capitalize'}}>{sel.status}</span>
-            <span style={{fontSize:10,fontFamily:'JetBrains Mono',color:T.cyan,
-              background:T.cyan+'10',border:`1px solid ${T.cyan}22`,borderRadius:5,padding:'2px 8px'}}>v{sel.version}</span>
+            <span style={{fontSize:10,fontFamily:'JetBrains Mono',color:typeColor[sel.type]||T.txm,
+              background:(typeColor[sel.type]||T.txm)+'10',border:`1px solid ${typeColor[sel.type]||T.txm}22`,
+              borderRadius:5,padding:'2px 8px',textTransform:'uppercase',letterSpacing:'.06em'}}>
+              {TYPE_LABELS[sel.type]||'Agent'}
+            </span>
+            {sel.type!=='drain'&&<span style={{fontSize:10,fontFamily:'JetBrains Mono',color:T.cyan,
+              background:T.cyan+'10',border:`1px solid ${T.cyan}22`,borderRadius:5,padding:'2px 8px'}}>v{sel.version}</span>}
             <span style={{marginLeft:'auto',fontSize:10,color:T.txm,fontFamily:'JetBrains Mono'}}>
               Last seen: {fmtAge(sel.last_seen)}
             </span>
@@ -140,12 +154,25 @@ function AgentsView({onInvestigate}){
             <div style={{display:'flex',gap:12}}>
               <div style={{flex:1,display:'flex',flexDirection:'column',gap:10}}>
                 <Card style={{padding:14}}>
-                  <SectionHead title="System Information"/>
+                  <SectionHead title={sel.type==='drain'?'Service Information':'System Information'}/>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px 16px'}}>
-                    {[['OS',sel.os],['Hostname',sel.hostname],['IP Address',sel.ip],
-                      ['Agent Version',sel.version],['Agent ID',sel.id],
-                      ['Last Seen',fmtAge(sel.last_seen)]
-                    ].map(([k,v])=>(
+                    {(sel.type==='drain'
+                      ? [
+                          ['Type','Web Drain'],
+                          ['App Name',sel.name],
+                          ['Source','vercel-drain'],
+                          ['Endpoint ID',sel.id],
+                          ['Registered',sel.created_at?fmtDate(sel.created_at):'—'],
+                          ['Total Alerts',agentAlerts.length||0],
+                          ['Latest Alert',latestAlertTime],
+                        ]
+                      : [
+                          ['OS',sel.os],['Hostname',sel.hostname],['IP Address',sel.ip],
+                          ['Agent Version',sel.version],['Agent ID',sel.id],
+                          ['Last Heartbeat',fmtDateTime(sel.last_seen)],
+                          ['Latest Alert',latestAlertTime],
+                        ]
+                    ).map(([k,v])=>(
                       <div key={k}>
                         <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
                           textTransform:'uppercase',letterSpacing:'.08em',marginBottom:2}}>{k}</div>
@@ -154,6 +181,19 @@ function AgentsView({onInvestigate}){
                       </div>
                     ))}
                   </div>
+                  {sel.type==='drain'&&(
+                    <div style={{marginTop:12,padding:'8px 10px',background:T.bg,borderRadius:7,
+                      border:`1px solid ${T.purple}22`}}>
+                      <div style={{fontSize:9,color:T.purple,fontFamily:'Space Grotesk',fontWeight:700,
+                        textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Configuration</div>
+                      <div style={{fontSize:10,color:T.txm,fontFamily:'JetBrains Mono',lineHeight:1.7}}>
+                        Link events: add <span style={{color:T.cyan}}>?endpoint_id={sel.id}</span> to drain URL
+                      </div>
+                      <div style={{fontSize:10,color:T.txm,fontFamily:'JetBrains Mono',lineHeight:1.7}}>
+                        Or set env: <span style={{color:T.cyan}}>VIGIL_DRAIN_ENDPOINT_ID={sel.id}</span>
+                      </div>
+                    </div>
+                  )}
                 </Card>
 
                 {sel.cpu>0&&(

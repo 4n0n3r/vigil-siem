@@ -260,8 +260,9 @@ function ConnectorHealth(){
 
 function AgentGrid(){
   const T=useT();const[sel,setSel]=useState(null);
-  const sc={online:T.green,stale:T.amber,offline:T.red};
+  const sc={online:T.green,stale:T.amber,offline:T.red,unknown:T.txm};
   const fmtAge=d=>{const s=Math.floor((Date.now()-d)/1000);if(s<60)return`${s}s`;if(s<3600)return`${Math.floor(s/60)}m`;return`${Math.floor(s/3600)}h`;};
+  const fmtDT=d=>{if(!d)return'—';const dt=new Date(d);return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});};
   return (
     <Card style={{padding:16,flex:'0 0 268px'}}>
       <SectionHead title="Agent Health"
@@ -282,14 +283,20 @@ function AgentGrid(){
             {a.alerts>0&&<span style={{fontSize:9,fontFamily:'JetBrains Mono',
               color:a.alerts>10?T.red:T.amber,background:(a.alerts>10?T.red:T.amber)+'18',
               border:`1px solid ${(a.alerts>10?T.red:T.amber)}33`,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{a.alerts}</span>}
-            <span style={{fontSize:9,color:T.txm,flexShrink:0}}>{fmtAge(a.last_seen)}</span>
+            <span style={{fontSize:9,color:T.txm,flexShrink:0}}>{a.type==='drain'?`${a.alerts} alerts`:fmtAge(a.last_seen)}</span>
           </div>
           {sel?.id===a.id&&(
             <div style={{margin:'2px 0 6px',padding:10,background:T.bg,borderRadius:8,border:T.cardBorder}}>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px 12px',marginBottom:a.cpu>0?8:0}}>
-                {[['OS',a.os],['IP',a.ip],['Version',a.version],['Status',a.status]].map(([k,v])=>(
+                {(()=>{
+                  const latestAl=D.ALERTS.filter(al=>al.endpoint_id===a.id||al.endpoint_id===a.hostname||al.endpoint_id===a.name);
+                  const latestAlTime=latestAl.length>0?fmtDT(latestAl.reduce((x,y)=>x.matched_at>y.matched_at?x:y).matched_at):'—';
+                  return a.type==='drain'
+                    ?[['Type','Web Drain'],['App',a.name],['Status',a.status],['Alerts',a.alerts],['Latest Alert',latestAlTime]]
+                    :[['OS',a.os],['IP',a.ip],['Version',a.version],['Status',a.status],['Last Heartbeat',fmtDT(a.last_seen)],['Latest Alert',latestAlTime]];
+                })().map(([k,v])=>(
                   <div key={k}><div style={{fontSize:8,color:T.txm,textTransform:'uppercase',fontFamily:'Space Grotesk',fontWeight:700,letterSpacing:'.07em'}}>{k}</div>
-                  <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:1}}>{v}</div></div>
+                  <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v}</div></div>
                 ))}
               </div>
               {a.cpu>0&&[['CPU',a.cpu,T.cyan],['RAM',a.ram,T.purple]].map(([lbl,val,clr])=>(
@@ -312,13 +319,36 @@ function AgentGrid(){
 }
 
 function AlertDropdown({alert,onViewFull,onDismiss,T,SC}){
-  const snap=alert.event_snapshot;
+  const snap=alert.event_snapshot||{};
+  const _p=window.pickSnap(snap);
   const statusColor={open:T.amber,acknowledged:T.txm,resolved:T.green};
   const doAction=async(action)=>{
     if(action==='Acknowledge') await window.VIGIL_API.acknowledgeAlert(alert.id,'');
     else if(action==='Resolve') await window.VIGIL_API.batchAlerts([alert.id],'resolve');
     onDismiss();
   };
+  const ok=(v)=>v!=null&&v!==''&&String(v).trim()!==''&&v!=='—'&&v!=='null';
+  const fields=(()=>{
+    const f=[['Host',snap.host||alert.endpoint_id],['Status',alert.status]];
+    if(_p.isWeb){
+      if(ok(snap.method))       f.push(['Method',snap.method]);
+      if(ok(_p.srcIp))          f.push(['Client IP',_p.srcIp]);
+      if(snap.status_code!=null)f.push(['HTTP',String(snap.status_code)]);
+      if(ok(snap.path))         f.push(['Path',snap.path]);
+      if(ok(snap.ua_category))  f.push(['UA',snap.ua_category]);
+      if(ok(snap.host))         f.push(['Domain',snap.host]);
+    } else {
+      if(ok(_p.user))    f.push(['User',_p.user]);
+      if(ok(_p.process)) f.push(['Process',_p.process]);
+      if(ok(_p.srcIp))   f.push(['Src IP',_p.srcIp]);
+      if(ok(_p.dstIp))   f.push(['Dst IP',_p.dstIp]);
+      if(ok(_p.pid))     f.push(['PID',_p.pid]);
+      if(ok(_p.tactic))  f.push(['MITRE',_p.tactic]);
+      if(ok(_p.eventId)) f.push(['Event ID',_p.eventId]);
+    }
+    return f.slice(0,8);
+  })();
+  const cmdVal=_p.isWeb?(_p.requestLine||_p.cmdline):_p.cmdline;
   return(
     <tr>
       <td colSpan={8} style={{padding:0,borderBottom:`1px solid ${T.bd}`}}>
@@ -326,34 +356,27 @@ function AlertDropdown({alert,onViewFull,onDismiss,T,SC}){
           borderLeft:`3px solid ${SC[alert.severity]}`}}>
           <div style={{display:'flex',gap:16,alignItems:'flex-start'}}>
             <div style={{flex:1,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'8px 16px'}}>
-              {[
-                ['Host',snap.host||alert.endpoint_id],
-                ['User',snap.user],
-                ['Process',snap.process],
-                ['Src IP',snap.src_ip],
-                ['Dst IP',snap.dst_ip||'—'],
-                ['PID',snap.pid],
-                ['MITRE',snap.tactic],
-                ['Status',alert.status],
-              ].map(([k,v])=>(
+              {fields.map(([k,v])=>(
                 <div key={k}>
                   <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
                     textTransform:'uppercase',letterSpacing:'.08em'}}>{k}</div>
                   <div style={{fontSize:11,color:k==='Status'?statusColor[alert.status]:T.tx,
                     fontFamily:'JetBrains Mono',marginTop:2,overflow:'hidden',
-                    textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{String(v)}</div>
+                    textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{String(v??'—')}</div>
                 </div>
               ))}
             </div>
             <div style={{width:280,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-              <div>
+              {cmdVal&&<div>
                 <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
-                  textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Command</div>
+                  textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>
+                  {_p.isWeb?'Request':'Command'}
+                </div>
                 <div style={{fontFamily:'JetBrains Mono',fontSize:10,color:T.cyan,
                   background:T.bg,border:`1px solid ${T.bd}`,borderRadius:6,padding:'5px 8px',
                   overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
-                  title={snap.cmdline}>{snap.cmdline||'—'}</div>
-              </div>
+                  title={cmdVal}>{cmdVal}</div>
+              </div>}
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 {[['Acknowledge',T.green],['Resolve',T.txm]].map(([lbl,c])=>(
                   <button key={lbl} onClick={()=>doAction(lbl)}

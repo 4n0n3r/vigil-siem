@@ -27,13 +27,16 @@
   // ── Normalizers ──────────────────────────────────────────────────────────
   function normalizeAlert(a) {
     const snap = a.event_snapshot || {};
+    const isDrain = snap.channel === 'web' && snap.app_name;
+    const epId = a.endpoint_id || (!isDrain ? (snap.host || snap._HOSTNAME || snap.computer) : null);
     return {
       ...a,
       matched_at: new Date(a.matched_at),
-      endpoint_id: a.endpoint_id || snap.host || snap._HOSTNAME || snap.computer || '—',
+      endpoint_id: epId || '—',
+      _app_name: isDrain ? snap.app_name : null,
       event_snapshot: {
         ...snap,
-        host: a.endpoint_id || snap.host || snap._HOSTNAME || snap.computer || '—',
+        host: epId || snap.app_name || '—',
       },
     };
   }
@@ -42,19 +45,35 @@
     const now = Date.now();
     const lastSeen = e.last_seen ? new Date(e.last_seen) : null;
     const secsAgo = lastSeen ? (now - lastSeen.getTime()) / 1000 : Infinity;
-    const status = secsAgo < 300 ? 'online' : secsAgo < 3600 ? 'stale' : 'offline';
     const meta = e.metadata || {};
     const si = meta.sys_info || {};
+    const osStr = e.os || '';
+
+    // Infer endpoint type from metadata or available fields
+    let type = e.endpoint_type || meta.endpoint_type || '';
+    if (!type) {
+      if (!osStr && !e.ip_address) type = 'drain';
+      else if (osStr.toLowerCase().match(/linux|ubuntu|debian|centos|fedora|rhel|arch/)) type = 'linux';
+      else if (osStr.toLowerCase().includes('windows')) type = 'windows';
+      else type = 'agent';
+    }
+
+    // Drain endpoints never heartbeat — status resolved later in computeDerived
+    const status = type === 'drain' ? 'unknown'
+      : secsAgo < 300 ? 'online' : secsAgo < 3600 ? 'stale' : 'offline';
+
     return {
-      id: e.id, name: e.name || e.hostname || '—', hostname: e.hostname || e.name || '—', os: e.os || '—',
-      ip: e.ip_address || '—',
+      id: e.id, name: e.name || e.hostname || '—', hostname: e.hostname || e.name || '—',
+      os: osStr || '—', ip: e.ip_address || '—',
       ip_history: (e.ip_history || []).map(h => ({
         ip: h.ip_address, first_seen: new Date(h.first_seen), last_seen: new Date(h.last_seen),
       })),
       status, last_seen: lastSeen || new Date(0),
       version: meta.version || meta.agent_version || '—',
+      type,
       alerts: 0, cpu: si.cpu_usage_pct || 0, ram: si.ram_usage_pct || 0,
       disk_free_gb: si.disk_free_gb || 0,
+      created_at: e.created_at ? new Date(e.created_at) : null,
     };
   }
 
@@ -90,7 +109,23 @@
   function computeDerived() {
     const D = window.VIGIL_DATA;
 
-    // Alert counts per agent hostname
+    // Build app_name → endpoint_id map for drain endpoints
+    const drainMap = {};
+    D.AGENTS.forEach(a => {
+      if (a.type === 'drain') drainMap[a.name.toLowerCase()] = a.id;
+    });
+
+    // Link drain alerts to their endpoint via app_name matching
+    D.ALERTS.forEach(a => {
+      if (!a._app_name) return;
+      if (a.endpoint_id && a.endpoint_id !== '—') return;
+      const key = a._app_name.toLowerCase();
+      const epId = drainMap[key]
+        || Object.entries(drainMap).find(([k]) => key.includes(k) || k.includes(key))?.[1];
+      if (epId) a.endpoint_id = epId;
+    });
+
+    // Alert counts per agent hostname / id
     const agentAlertCounts = {};
     D.ALERTS.forEach(a => {
       if (a.endpoint_id && a.status === 'open') {
@@ -101,6 +136,15 @@
       ...a,
       alerts: agentAlertCounts[a.hostname] || agentAlertCounts[a.name] || agentAlertCounts[a.id] || 0,
     }));
+
+    // Set drain endpoint status based on recent alert activity
+    const hourAgo = Date.now() - 3600000;
+    D.AGENTS = D.AGENTS.map(a => {
+      if (a.type !== 'drain') return a;
+      const hasRecent = D.ALERTS.some(al => al.endpoint_id === a.id && al.matched_at.getTime() > hourAgo);
+      const hasAny = D.ALERTS.some(al => al.endpoint_id === a.id);
+      return { ...a, status: hasRecent ? 'online' : hasAny ? 'stale' : 'offline' };
+    });
 
     // Top rules firing
     const ruleCounts = {};

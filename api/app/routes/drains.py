@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _DRAIN_SECRET = os.environ.get("VIGIL_DRAIN_SECRET", "")
+# Set this to the endpoint UUID of your drain endpoint so events are linked.
+# Can be overridden per-request via ?endpoint_id=<uuid> query param.
+_DRAIN_ENDPOINT_ID = os.environ.get("VIGIL_DRAIN_ENDPOINT_ID", "")
 
 # Mirror the enrichment constants from collector_weblog.go and website/src/middleware.ts
 # so drain events are field-compatible with collector-sourced web events.
@@ -128,7 +131,7 @@ def _enrich(
     }
 
 
-def _parse_entry(entry: dict[str, Any], app_name: str) -> StoredEvent | None:
+def _parse_entry(entry: dict[str, Any], app_name: str, endpoint_id: str = "") -> StoredEvent | None:
     """Parse one Vercel log drain entry. Returns None for non-HTTP entries."""
     proxy = entry.get("proxy")
     if not isinstance(proxy, dict):
@@ -162,7 +165,7 @@ def _parse_entry(entry: dict[str, Any], app_name: str) -> StoredEvent | None:
         source=f"web:{app_name}",
         event=_enrich(app_name, method, path, query, client_ip, ua, referer, host, status_code, bytes_sent),
         timestamp=ts,
-        endpoint_id="",
+        endpoint_id=endpoint_id,
     )
 
 
@@ -194,6 +197,7 @@ async def vercel_drain(request: Request) -> Response:
         return JSONResponse(status_code=401, content={"error_code": "DRAIN_AUTH_FAILED", "message": "invalid signature"})
 
     app_name = request.query_params.get("app", "vigilsec.io")
+    endpoint_id = request.query_params.get("endpoint_id", "") or _DRAIN_ENDPOINT_ID
 
     stored_events: list[StoredEvent] = []
     for line in body.splitlines():
@@ -201,7 +205,7 @@ async def vercel_drain(request: Request) -> Response:
         if not line:
             continue
         try:
-            ev = _parse_entry(json.loads(line), app_name)
+            ev = _parse_entry(json.loads(line), app_name, endpoint_id)
             if ev and await store.add_event(ev):
                 stored_events.append(ev)
         except Exception:

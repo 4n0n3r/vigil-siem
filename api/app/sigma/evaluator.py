@@ -158,15 +158,16 @@ def _match_value(actual: Any, modifier: str | None, expected: Any) -> bool:
     else:
         expected_list = expected
 
-    # Handle 'all' modifier — every value must match
+    # Handle 'all' modifier — every value must match.
+    # Sigma allows both `field|all|contains` and `field|contains|all` orderings.
     require_all = False
     base_modifier = modifier
-    if modifier and modifier.startswith("all|"):
-        require_all = True
-        base_modifier = modifier[4:] or None
-    elif modifier == "all":
-        require_all = True
-        base_modifier = None
+    if modifier:
+        parts = modifier.split("|")
+        if "all" in parts:
+            require_all = True
+            parts = [p for p in parts if p != "all"]
+        base_modifier = "|".join(parts) if parts else None
 
     def _single_match(exp_val: Any) -> bool:
         return _match_single(actual, base_modifier, exp_val)

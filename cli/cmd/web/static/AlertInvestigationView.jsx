@@ -561,25 +561,32 @@ function AlertInvestigationView({alert,onBack}){
           <Card style={{padding:14}}>
             <SectionHead title="Alert Summary"/>
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'10px 16px',marginBottom:12}}>
-              {(()=>{const _p=window.pickSnap(alert.event_snapshot);return _p.isWeb?[
-                ['Rule',alert.rule_name,'full'],
-                ['Host',alert.endpoint_id,null],
-                ['Client IP',_p.srcIp||'—',null],
-                ['Method',alert.event_snapshot.method||'—',null],
-                ['Status',alert.event_snapshot.status_code!=null?String(alert.event_snapshot.status_code):'—',null],
-                ['Path',alert.event_snapshot.path||'—',null],
-                ['Host Header',alert.event_snapshot.host||'—',null],
-                ['UA Type',alert.event_snapshot.ua_category||'—',null],
-              ]:[
-                ['Rule',alert.rule_name,'full'],
-                ['Host',alert.endpoint_id,null],
-                ['User',_p.user||'—',null],
-                ['Process',_p.process||'—',null],
-                ['PID',_p.pid||'—',null],
-                ['Src IP',_p.srcIp||'—',null],
-                ['Dst IP',_p.dstIp||'internal',null],
-                ['MITRE',_p.tactic||'—',null],
-              ];})().map(([k,v,span])=>(
+              {(()=>{
+                const snap=alert.event_snapshot||{};
+                const _p=window.pickSnap(snap);
+                const ed=(snap.event_data&&typeof snap.event_data==='object')?snap.event_data:{};
+                const ok=(v)=>v!=null&&v!==''&&String(v).trim()!==''&&v!=='—';
+                const f=[['Rule',alert.rule_name,'full'],['Host',alert.endpoint_id,null]];
+                if(_p.isWeb){
+                  [['Method',snap.method],['Client IP',_p.srcIp],
+                   ['Status',snap.status_code!=null?String(snap.status_code):null],
+                   ['Path',snap.path],['Host Header',snap.host],
+                   ['UA Type',snap.ua_category],['Referer',snap.referer],
+                   ['App',snap.app_name],['Log Format',snap.log_format],
+                   ['Bytes',snap.bytes_sent!=null&&snap.bytes_sent!==-1?String(snap.bytes_sent):null],
+                  ].forEach(([k,v])=>{if(ok(v))f.push([k,v,null]);});
+                } else {
+                  [['Event ID',_p.eventId],['Channel',snap.channel],
+                   ['User',_p.user],['Process',_p.process],['PID',_p.pid],
+                   ['Src IP',_p.srcIp],['Dst IP',_p.dstIp],['MITRE',_p.tactic],
+                   ['Computer',_p.computer!==alert.endpoint_id?_p.computer:null],
+                  ].forEach(([k,v])=>{if(ok(v))f.push([k,v,null]);});
+                  // Remaining event_data fields not already shown
+                  const used=new Set(['CommandLine','ProcessCommandLine','NewProcessName','ProcessName','ProcessId','NewProcessId','IpAddress','ClientAddress','DestinationIp','TargetUserName','SubjectUserName','EventId']);
+                  Object.entries(ed).forEach(([k,v])=>{if(!used.has(k)&&ok(v)&&String(v)!=='-'&&String(v)!=='%%1842')f.push([k,String(v),null]);});
+                }
+                return f;
+              })().map(([k,v,span])=>(
                 <div key={k} style={span==='full'?{gridColumn:'1 / -1'}:{}}>
                   <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
                     textTransform:'uppercase',letterSpacing:'.08em',marginBottom:2}}>{k}</div>
@@ -589,15 +596,24 @@ function AlertInvestigationView({alert,onBack}){
                 </div>
               ))}
             </div>
-            <div>
-              <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
-                textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>Command Line</div>
-              <div style={{fontFamily:'JetBrains Mono',fontSize:11,color:T.cyan,
-                background:T.bg,border:`1px solid ${T.bd}`,borderRadius:7,
-                padding:'7px 10px',overflow:'auto',whiteSpace:'nowrap'}}>
-                {window.pickSnap(alert.event_snapshot).cmdline||'—'}
-              </div>
-            </div>
+            {(()=>{
+              const _p=window.pickSnap(alert.event_snapshot);
+              const val=_p.isWeb?(_p.requestLine||_p.cmdline):_p.cmdline;
+              if(!val)return null;
+              return(
+                <div>
+                  <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,
+                    textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>
+                    {_p.isWeb?'Request':'Command Line'}
+                  </div>
+                  <div style={{fontFamily:'JetBrains Mono',fontSize:11,color:T.cyan,
+                    background:T.bg,border:`1px solid ${T.bd}`,borderRadius:7,
+                    padding:'7px 10px',overflow:'auto',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+                    {val}
+                  </div>
+                </div>
+              );
+            })()}
           </Card>
 
           {window.pickSnap(alert.event_snapshot).tactic&&<MitreCard tactic={window.pickSnap(alert.event_snapshot).tactic}/>}

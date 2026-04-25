@@ -273,27 +273,46 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
             </div>
             <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',color:T.txm,fontSize:20,lineHeight:1,padding:2,flexShrink:0}}>×</button>
           </div>
-          <div style={{display:'flex',gap:8,marginTop:10,flexWrap:'wrap'}}>
-            {(()=>{const _p=pickSnap(alert.event_snapshot);return _p.isWeb
-              ?[['Host',alert.endpoint_id],['Client IP',_p.srcIp],['Path',alert.event_snapshot.path],['Status',String(alert.event_snapshot.status_code??'')]]
-              :[['Host',alert.endpoint_id],['User',_p.user],['Process',_p.process],['MITRE',_p.tactic]];
+          <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
+            {(()=>{
+              const _p=pickSnap(alert.event_snapshot);
+              const snap=alert.event_snapshot||{};
+              const f=[['Host',alert.endpoint_id]];
+              if(_p.isWeb){
+                if(snap.method)          f.push(['Method',snap.method]);
+                if(_p.srcIp)             f.push(['Client IP',_p.srcIp]);
+                if(snap.status_code!=null)f.push(['Status',String(snap.status_code)]);
+                if(snap.path)            f.push(['Path',snap.path]);
+                if(snap.ua_category&&snap.ua_category!=='browser') f.push(['UA',snap.ua_category]);
+                if(snap.host)            f.push(['Domain',snap.host]);
+              } else {
+                if(_p.user)    f.push(['User',_p.user]);
+                if(_p.process) f.push(['Process',_p.process]);
+                if(_p.srcIp)   f.push(['Src IP',_p.srcIp]);
+                if(_p.tactic)  f.push(['MITRE',_p.tactic]);
+                if(_p.eventId) f.push(['Event ID',_p.eventId]);
+                if(_p.pid)     f.push(['PID',_p.pid]);
+                if(_p.computer&&_p.computer!==alert.endpoint_id) f.push(['Computer',_p.computer]);
+              }
+              return f.filter(([,v])=>v&&v!=='—'&&v!=='null'&&String(v).trim()!=='').slice(0,9);
             })().map(([k,v])=>(
-              <div key={k} style={{background:T.el,borderRadius:6,padding:'4px 8px',border:T.cardBorder}}>
+              <div key={k} style={{background:T.el,borderRadius:6,padding:'4px 8px',border:T.cardBorder,maxWidth:200}}>
                 <div style={{fontSize:8,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>{k}</div>
-                <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:1}}>{v}</div>
+                <div style={{fontSize:11,color:T.tx,fontFamily:'JetBrains Mono',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v}</div>
               </div>
             ))}
           </div>
         </div>
         <div style={{padding:'14px 20px',borderBottom:T.cardBorder}}>
-          <div style={{fontSize:10,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',marginBottom:8}}>Event Snapshot</div>
-          <pre style={{fontFamily:'JetBrains Mono',fontSize:11,color:T.cyan,
+          <div style={{fontSize:10,color:T.txm,fontFamily:'Space Grotesk',fontWeight:700,textTransform:'uppercase',letterSpacing:'.09em',marginBottom:8}}>Full Event Log</div>
+          <pre style={{fontFamily:'JetBrains Mono',fontSize:10,color:T.cyan,
             background:T.bg,borderRadius:8,border:T.cardBorder,padding:12,
-            overflow:'auto',whiteSpace:'pre-wrap',lineHeight:1.6,maxHeight:160}}>
-{(()=>{const _p=pickSnap(alert.event_snapshot);return JSON.stringify(_p.isWeb
-  ?{client_ip:_p.srcIp,path:alert.event_snapshot.path,method:alert.event_snapshot.method,status_code:alert.event_snapshot.status_code,user_agent:alert.event_snapshot.user_agent}
-  :{src_ip:_p.srcIp,dst_ip:_p.dstIp,process:_p.process,user:_p.user,cmdline:_p.cmdline,pid:alert.event_snapshot.pid},null,2);})()}
-          </pre>
+            overflow:'auto',whiteSpace:'pre-wrap',lineHeight:1.6,maxHeight:220,margin:0}}
+            dangerouslySetInnerHTML={{__html:JSON.stringify(alert.event_snapshot,null,2)
+              .replace(/"([^"]+)":/g,`<span style="color:#00E5FF;">"$1":</span>`)
+              .replace(/: "([^"]+)"/g,`: <span style="color:#E6C84A;">"$1"</span>`)
+              .replace(/: (\d+)/g,`: <span style="color:#A78BFA;">$1</span>`)
+              .replace(/: (true|false|null)/g,`: <span style="color:#F85149;">$1</span>`)}}/>
         </div>
         <div style={{padding:'14px 20px',borderBottom:T.cardBorder,flex:1}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
@@ -334,29 +353,35 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
 }
 
 // Normalizes event_snapshot fields across all collectors:
-//   web     → client_ip, remote_user, request_line, channel="web"
+//   web     → client_ip, method, path, status_code, channel="web"
 //   journald→ MESSAGE (regex for IP/user), _COMM, _PID, _CMDLINE
 //   syslog  → message (regex for IP/user), process, pid
 //   auditd  → addr, uid, comm, exe, pid
 //   windows → event_data.{IpAddress,TargetUserName,ProcessName,ProcessId,CommandLine}
 function pickSnap(snap){
-  if(!snap) return {channel:'',isWeb:false,srcIp:'',dstIp:'',user:'',process:'',pid:'',cmdline:'',tactic:''};
+  if(!snap) return {channel:'',isWeb:false,srcIp:'',dstIp:'',user:'',process:'',pid:'',cmdline:'',requestLine:'',tactic:'',eventId:'',computer:''};
   const ch=(snap.channel||'').toLowerCase();
   const ed=(snap.event_data&&typeof snap.event_data==='object')?snap.event_data:{};
-  const msg=snap.MESSAGE||snap.message||'';
-  const ipM=msg.match(/from\s+([\d.a-f:]+)\s+port/i);
-  const uM=msg.match(/(?:for(?:\s+invalid\s+user)?\s+|user\s+)(\S+)\s+from/i);
-  const winProc=(ed.NewProcessName||ed.ProcessName||'').split(/[/\\]/).pop();
+  const msg=snap.MESSAGE||snap.message||snap.msg||'';
+  const ipM=msg.match(/from\s+([\d.a-f:]+)\s+port/i)||msg.match(/rhost=([\d.a-f:]+)/i)||msg.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
+  const uM=msg.match(/(?:for(?:\s+invalid\s+user)?\s+|user\s+)(\S+)\s+from/i)||msg.match(/user=(\S+)/i)||msg.match(/account\s+(\S+)/i);
+  const winProc=(ed.NewProcessName||ed.ProcessName||snap.image||'').split(/[/\\]/).pop();
+  const isWeb=ch==='web';
+  const cmdline=snap.cmdline||snap.command_line||snap._CMDLINE||ed.CommandLine||ed.ProcessCommandLine||snap.proctitle||snap.command||snap.args||snap.exe||(!isWeb?msg:'')||'';
+  const requestLine=snap.request_line||(snap.method&&snap.path?(snap.method+' '+(snap.path||'/')+(snap.query?'?'+snap.query:'')):'')||'';
   return {
-    channel: ch,
-    isWeb:   ch==='web',
-    srcIp:   snap.src_ip||snap.client_ip||snap.source_ip||ed.IpAddress||ed.ClientAddress||snap.addr||(ipM?ipM[1]:'')||'',
-    dstIp:   snap.dst_ip||snap.destination_ip||'',
-    user:    snap.user||snap.username||snap.remote_user||ed.TargetUserName||ed.SubjectUserName||snap.uid||(uM?uM[1]:'')||'',
-    process: snap.process||snap.process_name||snap.image||snap._COMM||snap.SYSLOG_IDENTIFIER||snap.comm||winProc||'',
-    pid:     snap.pid!=null?String(snap.pid):(snap._PID||ed.ProcessId||''),
-    cmdline: snap.cmdline||snap.command_line||snap.request_line||snap._CMDLINE||ed.CommandLine||snap.exe||snap.proctitle||msg||'',
-    tactic:  snap.tactic||snap.mitre_tactic||'',
+    channel:  ch,
+    isWeb,
+    srcIp:    snap.src_ip||snap.client_ip||snap.source_ip||snap.remote_addr||ed.IpAddress||ed.ClientAddress||snap.addr||(ipM?ipM[1]:'')||'',
+    dstIp:    snap.dst_ip||snap.destination_ip||ed.DestinationIp||'',
+    user:     snap.user||snap.username||snap.remote_user||snap.account_name||snap.user_name||ed.TargetUserName||ed.SubjectUserName||snap.uid||(uM?uM[1]:'')||'',
+    process:  snap.process||snap.process_name||snap.image||snap._COMM||snap.SYSLOG_IDENTIFIER||snap.comm||winProc||snap.executable||'',
+    pid:      snap.pid!=null?String(snap.pid):(snap._PID!=null?String(snap._PID):(ed.ProcessId||ed.NewProcessId||'')),
+    cmdline,
+    requestLine,
+    tactic:   snap.tactic||snap.mitre_tactic||snap.mitre||'',
+    eventId:  snap.event_id!=null?String(snap.event_id):(ed.EventId||''),
+    computer: snap.computer||snap.hostname||snap.host||'',
   };
 }
 
