@@ -332,20 +332,29 @@ function AlertDrawer({alert,onClose,theme,onOpenInvestigation}){
   );
 }
 
-// Normalizes event_snapshot fields across all event channels (web, windows, linux).
-// Always returns a consistent shape so views don't need per-channel field name logic.
+// Normalizes event_snapshot fields across all collectors:
+//   web     → client_ip, remote_user, request_line, channel="web"
+//   journald→ MESSAGE (regex for IP/user), _COMM, _PID, _CMDLINE
+//   syslog  → message (regex for IP/user), process, pid
+//   auditd  → addr, uid, comm, exe, pid
+//   windows → event_data.{IpAddress,TargetUserName,ProcessName,ProcessId,CommandLine}
 function pickSnap(snap){
   if(!snap) return {channel:'',isWeb:false,srcIp:'',dstIp:'',user:'',process:'',pid:'',cmdline:'',tactic:''};
   const ch=(snap.channel||'').toLowerCase();
+  const ed=(snap.event_data&&typeof snap.event_data==='object')?snap.event_data:{};
+  const msg=snap.MESSAGE||snap.message||'';
+  const ipM=msg.match(/from\s+([\d.a-f:]+)\s+port/i);
+  const uM=msg.match(/(?:for(?:\s+invalid\s+user)?\s+|user\s+)(\S+)\s+from/i);
+  const winProc=(ed.NewProcessName||ed.ProcessName||'').split(/[/\\]/).pop();
   return {
     channel: ch,
     isWeb:   ch==='web',
-    srcIp:   snap.src_ip||snap.client_ip||snap.source_ip||'',
+    srcIp:   snap.src_ip||snap.client_ip||snap.source_ip||ed.IpAddress||ed.ClientAddress||snap.addr||(ipM?ipM[1]:'')||'',
     dstIp:   snap.dst_ip||snap.destination_ip||'',
-    user:    snap.user||snap.username||snap.remote_user||'',
-    process: snap.process||snap.process_name||snap.image||'',
-    pid:     snap.pid!=null?String(snap.pid):'',
-    cmdline: snap.cmdline||snap.command_line||snap.request_line||snap.path||'',
+    user:    snap.user||snap.username||snap.remote_user||ed.TargetUserName||ed.SubjectUserName||snap.uid||(uM?uM[1]:'')||'',
+    process: snap.process||snap.process_name||snap.image||snap._COMM||snap.SYSLOG_IDENTIFIER||snap.comm||winProc||'',
+    pid:     snap.pid!=null?String(snap.pid):(snap._PID||ed.ProcessId||''),
+    cmdline: snap.cmdline||snap.command_line||snap.request_line||snap._CMDLINE||ed.CommandLine||snap.exe||snap.proctitle||msg||'',
     tactic:  snap.tactic||snap.mitre_tactic||'',
   };
 }

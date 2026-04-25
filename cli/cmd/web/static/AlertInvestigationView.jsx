@@ -22,9 +22,10 @@ const MITRE = {
 
 function genTimeline(alert){
   const base=alert.matched_at.getTime();
+  const _gp=window.pickSnap(alert.event_snapshot);
   const types=[
-    {type:'auth_success',label:'SSH auth success',color:'#3FB950',icon:'✓',src:alert.event_snapshot.src_ip},
-    {type:'process_create',label:`Process: ${alert.event_snapshot.process}`,color:'#FFB547',icon:'⚙',src:null},
+    {type:'auth_success',label:'SSH auth success',color:'#3FB950',icon:'✓',src:_gp.srcIp},
+    {type:'process_create',label:`Process: ${_gp.process||'unknown'}`,color:'#FFB547',icon:'⚙',src:null},
     {type:'network_connect',label:'Outbound TCP:443',color:'#A78BFA',icon:'→',src:null},
     {type:'file_write',label:'Write: /tmp/.cache',color:'#FFB547',icon:'📝',src:null},
     {type:'auth_failure',label:'Auth failure (x3)',color:'#F85149',icon:'✗',src:null},
@@ -39,7 +40,7 @@ function genTimeline(alert){
   });
   events.push({id:'trigger',ts:alert.matched_at,offsetMin:0,
     type:'alert',label:alert.rule_name,color:SEV_C_DARK[alert.severity]||'#F85149',
-    icon:'⚠',src:alert.event_snapshot.src_ip,alert:true,
+    icon:'⚠',src:_gp.srcIp,alert:true,
     detail:alert.event_snapshot});
   const postOffsets=[1,3,6];
   postOffsets.forEach((m,i)=>{

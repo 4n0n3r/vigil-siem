@@ -30,12 +30,10 @@
     return {
       ...a,
       matched_at: new Date(a.matched_at),
-      endpoint_id: a.endpoint_id || snap.host || '—',
+      endpoint_id: a.endpoint_id || snap.host || snap._HOSTNAME || snap.computer || '—',
       event_snapshot: {
-        src_ip: '—', dst_ip: '', process: '—', user: '—',
-        tactic: '—', cmdline: '', pid: 0,
         ...snap,
-        host: a.endpoint_id || snap.host || '—',
+        host: a.endpoint_id || snap.host || snap._HOSTNAME || snap.computer || '—',
       },
     };
   }

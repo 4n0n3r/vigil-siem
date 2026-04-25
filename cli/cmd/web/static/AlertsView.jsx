@@ -24,7 +24,7 @@ function AlertsView({onInvestigate}){
     if(sevFilter.length>0) r=r.filter(a=>sevFilter.includes(a.severity));
     if(statusFilter!=='all') r=r.filter(a=>a.status===statusFilter);
     if(hostFilter) r=r.filter(a=>a.endpoint_id.toLowerCase().includes(hostFilter.toLowerCase()));
-    if(search){const sl=search.toLowerCase();r=r.filter(a=>{const sn=a.event_snapshot||{};return a.rule_name.toLowerCase().includes(sl)||(sn.src_ip||sn.client_ip||'').includes(sl)||a.endpoint_id.toLowerCase().includes(sl);});}
+    if(search){const sl=search.toLowerCase();r=r.filter(a=>{const sn=a.event_snapshot||{};return a.rule_name.toLowerCase().includes(sl)||(window.pickSnap(sn).srcIp||'').includes(sl)||a.endpoint_id.toLowerCase().includes(sl);});}
     r=[...r].sort((a,b)=>{
       let va=a[sortCol]||'',vb=b[sortCol]||'';
       if(va instanceof Date) va=va.getTime(),vb=vb.getTime();
@@ -200,7 +200,7 @@ function AlertsView({onInvestigate}){
                       </td>
                       <td style={{padding:'7px 10px'}}><SevBadge sev={a.severity}/></td>
                       <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{a.endpoint_id}</td>
-                      <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{snap(a).src_ip||snap(a).client_ip||'—'}</td>
+                      <td style={{padding:'7px 10px',fontFamily:'JetBrains Mono',fontSize:10,color:T.txm}}>{window.pickSnap(snap(a)).srcIp||'—'}</td>
                       <td style={{padding:'7px 10px'}}>
                         <span style={{fontSize:10,fontFamily:'Space Grotesk',fontWeight:500,
                           color:a.status==='open'?T.amber:a.status==='resolved'?T.green:T.txm,
