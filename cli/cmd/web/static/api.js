@@ -205,7 +205,7 @@
 
   async function fetchRules() {
     try {
-      const r = await fetch(`${BASE}/detections`, { headers: H });
+      const r = await fetch(`${BASE}/detections?limit=1000`, { headers: H });
       if (r.ok) { const j = await r.json(); window.VIGIL_DATA.RULES = (j.rules || []).map(normalizeRule); }
     } catch (e) { console.warn('fetchRules:', e); }
   }
