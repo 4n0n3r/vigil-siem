@@ -167,3 +167,16 @@ pattern. Option A is best for one-off FPs. Option B is a last resort.
 - `enabled == true` confirmed in list
 - `alert_ids.length > 0` from synthetic ingest
 - `total >= 1` from alerts list filtered by `rule_id`
+
+---
+
+## Known Noisy Rules
+
+Rules with recurring FPs. Before acting on alerts from these rules, check the
+suppression list first (`vigil suppressions list --output json`) — a suppression
+may already cover the pattern.
+
+| rule_id | rule_name | common FP pattern | suppression_exists | date_noted |
+|---|---|---|---|---|
+
+*Populated by the daily tuning run. A rule earns a row here after producing 3+ FPs across runs.*

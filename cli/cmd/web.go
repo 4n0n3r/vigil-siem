@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
@@ -20,7 +21,11 @@ import (
 //go:embed web
 var webAssets embed.FS
 
-var webPort int
+var (
+	webPort   int
+	webAPIKey string
+	webAIURL  string
+)
 
 // ----------------------------------------------------------------------------
 // vigil web
@@ -73,10 +78,17 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 
 		mux := http.NewServeMux()
 
-		// Resolve API key (env > config).
-		apiKey := os.Getenv("VIGIL_API_KEY")
+		// Resolve API key: flag > env > config.
+		apiKey := webAPIKey
+		if apiKey == "" {
+			apiKey = os.Getenv("VIGIL_API_KEY")
+		}
 		if apiKey == "" {
 			apiKey = globalConfig.APIKey
+		}
+		aiURL := webAIURL
+		if aiURL == "" {
+			aiURL = os.Getenv("VIGIL_AI_AGENT_URL")
 		}
 
 		// /api/* → reverse-proxy to VIGIL_API_URL (strip /api prefix).
@@ -94,11 +106,38 @@ All other paths serve the SPA; unknown paths fall back to index.html.`,
 		})
 
 		// All other paths → SPA; fall back to index.html for hash-routed paths.
+		mux.HandleFunc("/config.js", func(w http.ResponseWriter, r *http.Request) {
+			cfg := map[string]string{"aiUrl": aiURL}
+			body, err := json.Marshal(cfg)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+			_, _ = w.Write([]byte("window.__vigilConfig = " + string(body) + ";\n"))
+		})
+
 		fileServer := http.FileServer(http.FS(sub))
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			path := strings.TrimPrefix(r.URL.Path, "/")
 			if path == "" {
 				path = "index.html"
+			}
+			if path == "index.html" {
+				indexBytes, err := fs.ReadFile(sub, "index.html")
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				indexHTML := strings.Replace(
+					string(indexBytes),
+					`<script src="/static/api.js"></script>`,
+					`<script src="/config.js"></script>`+"\n"+`<script src="/static/api.js"></script>`,
+					1,
+				)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(indexHTML))
+				return
 			}
 			// Serve real file if it exists; otherwise fall back to index.html.
 			if _, err := sub.Open(path); err != nil {
@@ -154,5 +193,7 @@ func isPortInUse(err error) bool {
 
 func init() {
 	webStartCmd.Flags().IntVar(&webPort, "port", 3000, "HTTP port to listen on")
+	webStartCmd.Flags().StringVar(&webAPIKey, "api-key", "", "Vigil API key (overrides VIGIL_API_KEY env var and config)")
+	webStartCmd.Flags().StringVar(&webAIURL, "ai-url", "", "Local AI agent bridge URL (overrides VIGIL_AI_AGENT_URL env var)")
 	webCmd.AddCommand(webStartCmd)
 }

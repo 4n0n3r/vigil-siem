@@ -96,3 +96,23 @@ Produce a structured summary:
 - `api_status == "ok"` confirmed
 - At least one alert severity bucket inspected
 - Summary produced with `open_alerts` count (zero is valid)
+
+---
+
+## Known Benign Patterns
+
+Alerts matching any row below: **skip investigation, resolve immediately** via batch.
+
+```bash
+vigil alerts batch --action resolve --ids <matching_ids> --note "Known benign: <reason>" --output json
+```
+
+| rule_name | field_path | field_value | reason | date_added |
+|---|---|---|---|---|
+| Linux - Python or Perl Reverse Shell One-liner | SYSLOG_IDENTIFIER | CRON | certbot renewal cron uses `perl -e sleep`; not a reverse shell | 2026-04-28 |
+| Linux - Disk Wipe or Overwrite Utility Executed | SYSLOG_IDENTIFIER | sshd | SSH brute force for username "dd" matches dd substring; not disk wipe | 2026-04-28 |
+| Linux - System Directory Targeted by Recursive Deletion | SYSLOG_IDENTIFIER | sshd | sshd disconnect messages contain "-rf" substring; not actual rm execution | 2026-04-28 |
+| Linux - Systemd Service Unit Created or Enabled | MESSAGE | *.service: Succeeded. | Normal systemd service completion log; not new service creation | 2026-04-28 |
+| Linux - Suspicious Download from External Host | MESSAGE | http | YAML duplicate-key bug collapsed detection to match any HTTP URL; rule fixed 2026-04-28 | 2026-04-28 |
+
+*This table is populated by the daily investigation run. Each confirmed-benign pattern gets a row here so future runs skip re-investigation and go straight to resolve.*

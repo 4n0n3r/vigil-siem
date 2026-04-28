@@ -96,9 +96,43 @@ vigil alerts acknowledge <alert_id> --note "Investigated: <summary of findings>"
 
 ---
 
+## Decision: what action to take
+
+After investigation, classify and act:
+
+| Verdict | Condition | Action |
+|---|---|---|
+| True Positive | Malicious intent clear, or chained with lateral movement / execution alerts | `acknowledge` with pivot chain summary |
+| Legitimate | Activity is real but authorized (admin action, known tool, scheduled job) | `resolve` with reason |
+| Unknown | Evidence insufficient to decide | `acknowledge` with "needs review: <gap>" |
+| False Positive | Rule fired due to structural mismatch, not intent | create suppression, then `resolve` |
+
+```bash
+# True Positive
+vigil alerts acknowledge <id> --note "<finding> — pivot: <chain>" --output json
+
+# Legitimate
+vigil alerts batch --action resolve --ids <id1,id2,...> --note "Confirmed legitimate: <reason>" --output json
+
+# Unknown
+vigil alerts acknowledge <id> --note "Needs review: <what evidence is missing>" --output json
+```
+
+---
+
+## Per-Rule Pivot Field Map
+
+Consult before choosing hunt fields — avoids wasted queries on low-signal fields.
+
+| rule_name | best_pivot_field | common_FP_context |
+|---|---|---|
+
+*Populated by the daily investigation run. Add a row each time a rule reveals a consistent high-signal pivot or a common FP pattern.*
+
+---
+
 ## Success criteria
 
 - Alert retrieved with non-empty `event_snapshot`
 - At least one hunt query executed for pivoting
-- Alert acknowledged with a meaningful note
-- `acknowledged_at` is set in the final response
+- Alert status changed (acknowledged, resolved, or suppressed) with a meaningful note
