@@ -319,7 +319,7 @@
 
     async hunt(q) {
       const from = new Date(Date.now() - 24 * 3600000).toISOString();
-      const params = new URLSearchParams({ q: q || '', limit: 100, from_time: from });
+      const params = new URLSearchParams({ q: q || '', limit: 100, from, timeline: 'true' });
       const r = await fetch(`${BASE}/hunt?${params}`, { headers: H });
       if (!r.ok) throw new Error('Hunt failed');
       const j = await r.json();

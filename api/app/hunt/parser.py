@@ -177,10 +177,18 @@ class HQLParser:
 
     def _parse_and(self) -> ASTNode:
         left = self._parse_not()
-        while self._peek().type == "AND":
-            self._consume("AND")
-            right = self._parse_not()
-            left = BoolNode("AND", left, right)
+        while True:
+            tok = self._peek()
+            if tok.type == "AND":
+                self._consume("AND")
+                right = self._parse_not()
+                left = BoolNode("AND", left, right)
+            elif tok.type in ("WORD", "QUOTED", "LPAREN", "NOT"):
+                # Implicit AND: adjacent terms without explicit operator
+                right = self._parse_not()
+                left = BoolNode("AND", left, right)
+            else:
+                break
         return left
 
     def _parse_not(self) -> ASTNode:
