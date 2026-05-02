@@ -1,0 +1,41 @@
+title: New Outbound Connection to Common C2 Port
+id: e3a7c291-4f18-4b2d-9a01-cc87b3e2d501
+status: stable
+description: >
+  Detects a new outbound TCP connection to ports commonly abused for
+  command-and-control: 4444 (Metasploit default), 1337, 5555, 6666, 6667,
+  8333, 9001 (Tor), 9002, 31337. Fires on netconn:poll collector events.
+author: Vigil
+date: 2026/05/02
+logsource:
+  product: vigil
+  service: netconn
+detection:
+  selection:
+    source: "netconn:poll"
+    action: "new"
+    protocol: "tcp"
+    remote_port:
+      - 1337
+      - 4444
+      - 4445
+      - 5555
+      - 6666
+      - 6667
+      - 8333
+      - 9001
+      - 9002
+      - 31337
+  filter_loopback:
+    remote_addr|startswith:
+      - "127."
+      - "::1"
+  condition: selection and not filter_loopback
+level: high
+tags:
+  - attack.command_and_control
+  - attack.t1071
+  - attack.t1095
+falsepositives:
+  - Development environments running local services on these ports
+  - Legitimate Tor usage (9001)

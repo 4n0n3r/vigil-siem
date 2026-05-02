@@ -1,0 +1,55 @@
+title: New Internal Lateral Movement Connection (RDP/SMB/WMI)
+id: f1b8d042-3c77-4e19-ab02-dd98e4f3c602
+status: stable
+description: >
+  Detects a new outbound TCP connection to RDP (3389), SMB (445), or WMI (135)
+  on an internal RFC-1918 address. A workstation connecting to another
+  workstation on these ports is a strong lateral movement indicator.
+  Fires on netconn:poll collector events.
+author: Vigil
+date: 2026/05/02
+logsource:
+  product: vigil
+  service: netconn
+detection:
+  selection:
+    source: "netconn:poll"
+    action: "new"
+    protocol: "tcp"
+    remote_port:
+      - 135
+      - 445
+      - 3389
+  internal_dest:
+    remote_addr|startswith:
+      - "10."
+      - "172.16."
+      - "172.17."
+      - "172.18."
+      - "172.19."
+      - "172.20."
+      - "172.21."
+      - "172.22."
+      - "172.23."
+      - "172.24."
+      - "172.25."
+      - "172.26."
+      - "172.27."
+      - "172.28."
+      - "172.29."
+      - "172.30."
+      - "172.31."
+      - "192.168."
+  filter_established_services:
+    state: "LISTEN"
+  condition: selection and internal_dest and not filter_established_services
+level: medium
+tags:
+  - attack.lateral_movement
+  - attack.t1021.001
+  - attack.t1021.002
+  - attack.t1047
+falsepositives:
+  - IT management tools (SCCM, Ansible, Puppet) using WMI/SMB
+  - Legitimate remote desktop sessions by administrators
+  - Backup agents using SMB

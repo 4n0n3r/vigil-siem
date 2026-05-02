@@ -187,6 +187,7 @@ type Agent struct {
 	lastError    string
 
 	startedAt time.Time
+	agentIP   string // detected at startup; injected into every event payload
 }
 
 // New creates an Agent. Collectors must be added via AddCollector before Run is called.
@@ -194,6 +195,7 @@ func New(apiClient *client.Client, cfg Config) *Agent {
 	return &Agent{
 		apiClient: apiClient,
 		cfg:       cfg,
+		agentIP:   detectedIP(),
 	}
 }
 
@@ -381,6 +383,19 @@ func (a *Agent) flush() {
 	copy(batch, a.buffer)
 	a.buffer = a.buffer[:0]
 	a.mu.Unlock()
+
+	// Enrich every event with the agent's own IP so detection rules and
+	// hunt queries can reference it without joining against the endpoints table.
+	if a.agentIP != "" {
+		for i := range batch {
+			if batch[i].Event == nil {
+				batch[i].Event = make(map[string]interface{})
+			}
+			if _, already := batch[i].Event["agent_ip"]; !already {
+				batch[i].Event["agent_ip"] = a.agentIP
+			}
+		}
+	}
 
 	req := batchIngestRequest{Events: batch}
 	var resp batchIngestResponse

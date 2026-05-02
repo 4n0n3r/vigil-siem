@@ -1,0 +1,67 @@
+title: New Outbound Connection to Uncommon External Port (Possible Exfiltration)
+id: c3e0f264-6b31-4d4f-cd04-ff10a6b5e804
+status: experimental
+description: >
+  Detects a new outbound TCP connection to an external (non-RFC-1918) address
+  on a non-standard port above 1024 that is not HTTPS (443), HTTP (80), or
+  common application ports. May indicate data exfiltration over a custom
+  protocol or encrypted tunnel on an unusual port. Fires on netconn:poll.
+author: Vigil
+date: 2026/05/02
+logsource:
+  product: vigil
+  service: netconn
+detection:
+  selection:
+    source: "netconn:poll"
+    action: "new"
+    protocol: "tcp"
+    state: "ESTABLISHED"
+  filter_internal:
+    remote_addr|startswith:
+      - "10."
+      - "172.16."
+      - "172.17."
+      - "172.18."
+      - "172.19."
+      - "172.20."
+      - "172.21."
+      - "172.22."
+      - "172.23."
+      - "172.24."
+      - "172.25."
+      - "172.26."
+      - "172.27."
+      - "172.28."
+      - "172.29."
+      - "172.30."
+      - "172.31."
+      - "192.168."
+      - "127."
+  filter_common_ports:
+    remote_port:
+      - 80
+      - 443
+      - 8080
+      - 8443
+      - 53
+      - 25
+      - 587
+      - 993
+      - 995
+      - 22
+      - 21
+      - 3306
+      - 5432
+      - 6379
+      - 27017
+  condition: selection and not filter_internal and not filter_common_ports
+level: low
+tags:
+  - attack.exfiltration
+  - attack.t1041
+  - attack.t1048
+falsepositives:
+  - Custom application protocols (game clients, proprietary software)
+  - VPN tunnels on non-standard ports
+  - Development tools and build pipelines

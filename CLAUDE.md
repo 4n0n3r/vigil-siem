@@ -199,7 +199,7 @@ Wrap in a build-tag-guarded helper if it's platform-specific.
   "timestamp": "2024-01-01T00:00:00Z"
 }
 ```
-Use `source` prefixes: `winlog:`, `unifiedlog:`, `syslog:`, `journald:`, `file:`.
+Use `source` prefixes: `winlog:`, `unifiedlog:`, `syslog:`, `journald:`, `file:`, `netconn:`, `netfw:`.
 
 ### Batch flush
 The agent core (`agent.go`) handles all batching and flushing to
@@ -221,6 +221,10 @@ continuous stream. Use it when you want a point-in-time snapshot before or after
 | `forensic:services` | All services from the SCM (name, binary, start type) |
 | `forensic:tasks` | Scheduled task entries from the registry TaskCache |
 | `forensic:shimcache` | AppCompatCache raw bytes (hex-encoded) for offline parsing |
+| `forensic:network` | Point-in-time snapshot of all TCP/UDP connections (`netstat -ano`) |
+
+**Artifacts collected (Linux, requires root for full PID visibility):**
+Includes cron, systemd services, SUID binaries, SSH keys, users, listening ports (`ss -tlnp`), bash history, installed packages.
 
 Results are ingested as events into the SIEM. Search with `vigil search --query forensic:`.
 
@@ -251,8 +255,12 @@ should identify the appropriate skill and execute the steps in order.
 | `investigate_alert <id>` | alert ID given | `vigil alerts get <id> --output json` → search event context → `acknowledge` with note |
 | `hunt_brute_force` | credential attacks suspected | `vigil hunt --query "event_id:4625" --agg event_data.IpAddress --output json` |
 | `hunt_lateral_movement` | lateral spread suspected | `vigil hunt --query "event_id:4648" --agg event_data.TargetServerName --output json` |
+| `hunt_c2_connections` | C2 activity suspected | `vigil hunt --query "source:netconn:poll action:new" --agg remote_addr --output json` |
+| `hunt_firewall_drops` | blocked egress suspected | `vigil hunt --query "source:netfw:winfw action:drop direction:send" --agg dst_ip --output json` |
+| `hunt_lateral_netconn` | lateral movement via network | `vigil hunt --query "source:netconn:poll action:new remote_port:445 OR remote_port:3389 OR remote_port:135" --agg remote_addr --output json` |
 | `deploy_detection <file>` | new Sigma rule to deploy | `vigil detections create --file <rule.yaml> --output json` → ingest test event → verify `alert_ids` non-empty |
 | `forensic_sweep` | post-incident artifact grab | `vigil forensic collect --output json` → `vigil search --query "forensic:" --output json` |
+| `forensic_network_snapshot` | network state at time of incident | `vigil forensic collect --output json` → `vigil search --query "forensic:network" --output json` |
 | `build_dashboard` | reporting requested | `vigil alerts visualize --serve` |
 
 Each skill maps to a defined sequence of CLI commands with `--output json` throughout.

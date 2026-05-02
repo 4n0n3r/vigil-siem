@@ -23,6 +23,7 @@ func windowsProfileChannels(profile string) []string {
 			"Microsoft-Windows-TaskScheduler/Operational",
 			"Microsoft-Windows-Windows Defender/Operational",
 			"Microsoft-Windows-Bits-Client/Operational",
+			"Microsoft-Windows-DNS-Client/Operational",
 		}
 	default: // "standard"
 		return []string{
@@ -40,7 +41,7 @@ func platformServiceInfo() (name, startHint string) {
 	return "VIGILAgent", "sc start VIGILAgent"
 }
 
-// addPlatformCollectors wires Windows Event Log collectors into the agent.
+// addPlatformCollectors wires Windows Event Log collectors and network collectors into the agent.
 // If explicit channels were set via --channels, those take precedence over profile.
 func addPlatformCollectors(a *agent.Agent, cfg agent.Config, profile string) {
 	channels := cfg.Channels
@@ -49,5 +50,13 @@ func addPlatformCollectors(a *agent.Agent, cfg agent.Config, profile string) {
 	}
 	for _, col := range agent.NewWindowsCollectors(channels, cfg.BookmarkDir) {
 		a.AddCollector(col)
+	}
+
+	// Network connection diff collector (all profiles).
+	a.AddCollector(agent.NewNetconnCollector())
+
+	// Windows Firewall log tailer (standard and full profiles).
+	if profile != "minimal" {
+		a.AddCollector(agent.NewWinfwCollector(cfg.BookmarkDir))
 	}
 }

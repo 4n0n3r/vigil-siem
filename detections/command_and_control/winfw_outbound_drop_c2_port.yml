@@ -1,0 +1,37 @@
+title: Windows Firewall Blocked Outbound Connection to C2 Port
+id: b2d9e153-5a20-4c3e-bc03-ee09f5a4d703
+status: stable
+description: >
+  Detects Windows Firewall dropping an outbound connection to ports commonly
+  used for C2 channels. A drop on an outbound connection means software on the
+  host attempted to phone home but the firewall policy blocked it — the attempt
+  itself is still suspicious. Fires on netfw:winfw collector events.
+  Requires Windows Firewall logging to be enabled (dropped packets).
+author: Vigil
+date: 2026/05/02
+logsource:
+  product: vigil
+  service: winfw
+detection:
+  selection:
+    source: "netfw:winfw"
+    action: "drop"
+    direction: "send"
+    dst_port:
+      - 1337
+      - 4444
+      - 4445
+      - 5555
+      - 6666
+      - 6667
+      - 9001
+      - 9002
+      - 31337
+  condition: selection
+level: high
+tags:
+  - attack.command_and_control
+  - attack.t1071
+falsepositives:
+  - Security tools intentionally probing these ports
+  - Development environments testing connectivity

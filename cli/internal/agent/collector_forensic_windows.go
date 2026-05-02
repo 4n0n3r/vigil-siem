@@ -3,10 +3,14 @@
 package agent
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/windows/registry"
@@ -38,6 +42,7 @@ func (fc *ForensicCollector) sweep(ctx context.Context, out chan<- Event) {
 	fc.collectServices(ctx, out)
 	fc.collectScheduledTasks(ctx, out)
 	fc.collectShimcache(ctx, out)
+	fc.collectNetworkConnections(ctx, out)
 }
 
 // ----------------------------------------------------------------------------
@@ -218,6 +223,60 @@ func (fc *ForensicCollector) collectShimcache(ctx context.Context, out chan<- Ev
 		"size_bytes": len(data),
 		"data_hex":   hex.EncodeToString(data),
 	})
+}
+
+// ----------------------------------------------------------------------------
+// Network connections — point-in-time snapshot via netstat -ano
+// ----------------------------------------------------------------------------
+
+func (fc *ForensicCollector) collectNetworkConnections(ctx context.Context, out chan<- Event) {
+	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	raw, err := exec.CommandContext(tctx, "netstat", "-ano").Output()
+	if err != nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return
+		}
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 4 {
+			continue
+		}
+		proto := strings.ToLower(fields[0])
+		if proto != "tcp" && proto != "udp" {
+			continue
+		}
+
+		localAddr, localPort := splitAddrPort(fields[1])
+		remoteAddr, remotePort := splitAddrPort(fields[2])
+
+		var state, pid string
+		if proto == "tcp" {
+			if len(fields) < 5 {
+				continue
+			}
+			state = fields[3]
+			pid = fields[4]
+		} else {
+			pid = fields[3]
+		}
+
+		fc.emit(ctx, out, "forensic:network", map[string]interface{}{
+			"artifact":    "network_connection",
+			"protocol":    proto,
+			"local_addr":  localAddr,
+			"local_port":  localPort,
+			"remote_addr": remoteAddr,
+			"remote_port": remotePort,
+			"state":       state,
+			"pid":         pid,
+		})
+	}
 }
 
 // ----------------------------------------------------------------------------
