@@ -140,6 +140,7 @@ func parseWinfwLine(line string) (Event, bool) {
 	return Event{
 		Source: "netfw:winfw",
 		Event: map[string]interface{}{
+			"channel":   "netfw",
 			"action":    action,
 			"protocol":  protocol,
 			"src_ip":    srcIP,

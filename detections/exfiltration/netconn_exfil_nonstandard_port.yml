@@ -1,0 +1,43 @@
+title: Outbound Connection to Hardcoded Non-Standard Port (Possible Exfiltration)
+id: c3e0f264-6b31-4d4f-cd04-ff10a6b5e804
+status: experimental
+description: >
+  Detects a new outbound TCP connection to a specific set of ports that have
+  no legitimate application use but are commonly seen in exfiltration tooling
+  and custom RAT beacons: 1234, 2222, 3333, 7777, 8888, 9999, 12345, 54321,
+  65535. Unlike a broad port-range rule this avoids firing on normal traffic.
+  Fires on netconn:poll collector events.
+author: Vigil
+date: 2026/05/02
+logsource:
+  product: vigil
+  service: netconn
+detection:
+  selection:
+    source: "netconn:poll"
+    action: "new"
+    protocol: "tcp"
+    state: "ESTABLISHED"
+    remote_port:
+      - 1234
+      - 2222
+      - 3333
+      - 7777
+      - 8888
+      - 9999
+      - 12345
+      - 54321
+      - 65535
+  filter_loopback:
+    remote_addr|startswith:
+      - "127."
+      - "::1"
+  condition: selection and not filter_loopback
+level: medium
+tags:
+  - attack.exfiltration
+  - attack.t1041
+  - attack.t1048
+falsepositives:
+  - Custom internal tooling using these ports
+  - Development servers bound to these ports

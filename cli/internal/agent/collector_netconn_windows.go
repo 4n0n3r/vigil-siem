@@ -165,6 +165,7 @@ func connEvent(c netconn, action string, ts time.Time) Event {
 	return Event{
 		Source: "netconn:poll",
 		Event: map[string]interface{}{
+			"channel":     "netconn",
 			"action":      action,
 			"protocol":    c.proto,
 			"local_addr":  c.localAddr,

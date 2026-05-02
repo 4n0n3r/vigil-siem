@@ -74,10 +74,14 @@ async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
         event_channel = stored.event.get("channel", "").lower()
 
         # P0: pre-filter rules by channel before running the full detection block.
+        # A rule with a channel_filter is only evaluated when the event carries
+        # a matching channel.  Events with no channel field (e.g. netconn, netfw)
+        # are skipped for all channel-constrained rules — the old `and event_channel`
+        # guard caused those rules to run on everything, saturating the thread pool.
         for rule in rules:
             ch_filter = rule.get("channel_filter", [])
-            if ch_filter and event_channel and event_channel not in ch_filter:
-                continue  # wrong channel — skip
+            if ch_filter and (not event_channel or event_channel not in ch_filter):
+                continue  # wrong channel (or no channel) — skip
             try:
                 if evaluator.evaluate(rule["parsed_detection"], eval_event):
                     matched.append(rule)

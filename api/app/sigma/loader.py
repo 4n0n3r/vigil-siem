@@ -114,6 +114,14 @@ _LOGSOURCE_CHANNEL_MAP: dict[str, list[str]] = {
     "firewall-as":    ["Microsoft-Windows-Windows Firewall With Advanced Security/Firewall"],
     "dns-server":     ["DNS Server"],
     "driver-framework": ["Microsoft-Windows-DriverFrameworks-UserMode/Operational"],
+    # Vigil-native sources — rules targeting these only run on matching events.
+    "netconn":        ["netconn"],
+    "winfw":          ["netfw"],
+    "weblog":         ["web"],
+    "forensic":       ["forensic"],
+    "journald":       ["journald"],
+    "syslog":         ["syslog"],
+    "auditd":         ["auditd"],
 }
 
 
