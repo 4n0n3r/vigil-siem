@@ -1,0 +1,23 @@
+title: Linux Auth - Su to Root Success
+id: linux-su-root-success-001
+status: stable
+description: Detects successful su escalation to the root account. May indicate lateral movement from a compromised non-root account.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.privilege_escalation
+  - attack.t1548
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_su:
+    source|startswith: "journald:"
+    MESSAGE|contains: "Successful su for root"
+  sel_pam:
+    source|startswith: "journald:"
+    MESSAGE|contains: "su: session opened for user root"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized system administrators using su for maintenance
+level: high

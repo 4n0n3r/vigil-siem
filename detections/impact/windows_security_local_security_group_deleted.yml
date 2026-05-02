@@ -1,0 +1,20 @@
+title: Windows Security - Local Security Group Deleted
+id: win-sec-4733-001
+status: stable
+description: Detects deletion of a security-enabled local group (Event ID 4733). May indicate attacker disrupting access controls or cleaning up forensic evidence of unauthorized group creation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1531
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4733
+  condition: selection
+falsepositives:
+  - Authorized IT group lifecycle management
+level: high

@@ -1,0 +1,22 @@
+title: Linux Sudo - Root Command Execution
+id: linux-sudo-root-exec-001
+status: stable
+description: Detects successful sudo command execution as root. Low severity informational rule — valuable for building activity baseline and post-incident timeline reconstruction.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.privilege_escalation
+  - attack.t1548.003
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sudo"
+    MESSAGE|contains: "COMMAND="
+    MESSAGE|contains: "USER=root"
+  condition: selection
+falsepositives:
+  - All legitimate admin activity via sudo (expected — use for baseline)
+level: low

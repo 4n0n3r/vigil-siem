@@ -1,0 +1,26 @@
+title: Linux SSH - Brute Force Attack Succeeded
+id: linux-ssh-bruteforce-success-001
+status: stable
+description: Detects SSH password authentication success preceded by multiple failed attempts from the same source IP — indicating a successful brute force attack. Correlation gate: 5 failures in 10 minutes from same IP before this event fires.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1110.001
+  - attack.initial_access
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains: "Accepted password"
+  condition: selection
+falsepositives:
+  - Legitimate user logging in after multiple mistyped passwords (rare with 5-failure threshold)
+level: high
+vigil_correlation:
+  failure_pattern: "Failed password"
+  window_minutes: 10
+  min_failures: 5

@@ -126,6 +126,15 @@ Consult before choosing hunt fields — avoids wasted queries on low-signal fiel
 
 | rule_name | best_pivot_field | common_FP_context |
 |---|---|---|
+| Linux - Download Tool Piped to Shell | SYSLOG_IDENTIFIER | SYSLOG_IDENTIFIER=sshd means SSH auth log with download-tool name as username; not actual execution. Rule now has filter_sshd but watch for future bypasses. |
+| Linux - Firewall Service Stopped | MESSAGE | MESSAGE="Stopped Vigil Security Agent." or "Stopped Vigil Web UI." are Vigil own service stops; suppressions in place. Any other service name in MESSAGE warrants investigation. |
+| Linux - Passwd or Shadow File Enumeration via Cat | SYSLOG_IDENTIFIER | SYSLOG_IDENTIFIER=sshd means Sigma |all bug fired on "cat" in "authentication"; rule tuned to exclude sshd. If SYSLOG_IDENTIFIER is bash/sh/sudo/CRON, investigate fully. |
+| Windows PowerShell - Script Block Logging Triggered | computer | On UX200d: ScriptBlockText is Vigil CLI PowerShell AST parser (contains vigil.exe + base64 encoded command). On other hosts: investigate normally. |
+| Windows Security - Security Group Membership Enumerated | event_data.CallerProcessName | System processes (taskhostw.exe, VSSVC.exe, SearchIndexer.exe, svchost.exe) query Administrators group constantly; rule filter excludes all four as of 2026-04-29. Any other CallerProcessName warrants investigation. |
+| Windows Security - Local Group Membership Enumerated | event_data.CallerProcessName | Rule disabled 2026-04-29 due to extreme noise from svchost.exe. If rule is re-enabled, svchost.exe = FP; any user-space process = investigate. |
+| Linux - DNS Query for Tor or Dark Web Domain | SYSLOG_IDENTIFIER | Rule fixed 2026-04-29 (YAML duplicate-key bug). SYSLOG_IDENTIFIER=certbot + no .onion in MESSAGE = FP from NXDOMAIN cert renewal. SYSLOG_IDENTIFIER=systemd-resolved with .onion in MESSAGE = true positive. |
+| Windows Security - User Account Properties Changed | event_data.SubjectUserName | SubjectUserName=UX200D$ (machine account/SYSTEM) = Windows automatically updating account attributes (last logon, logon count); benign. SubjectUserName=a human username = investigate. |
+| Windows Security - Logon Using Explicit Credentials | event_data.ProcessName | ProcessName=lsass.exe + TargetServerName=localhost = MSA/Microsoft Account token refresh; FP. Any other ProcessName or non-localhost TargetServerName = investigate. |
 
 *Populated by the daily investigation run. Add a row each time a rule reveals a consistent high-signal pivot or a common FP pattern.*
 

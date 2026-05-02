@@ -1,0 +1,24 @@
+title: Linux - Base64 Encoded Command Execution
+id: linux-base64-exec-001
+status: stable
+description: Detects base64 decode operations in journald messages, indicating execution of encoded payloads. Common obfuscation technique used in staged malware delivery and webshell commands.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.defense_evasion
+  - attack.t1027
+  - attack.execution
+  - attack.t1059.004
+logsource:
+  product: linux
+detection:
+  sel_decode:
+    source|startswith: "journald:"
+    MESSAGE|contains: "base64 -d"
+  sel_decode_long:
+    source|startswith: "journald:"
+    MESSAGE|contains: "base64 --decode"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate scripts decoding non-executable base64 data (low rate)
+level: high

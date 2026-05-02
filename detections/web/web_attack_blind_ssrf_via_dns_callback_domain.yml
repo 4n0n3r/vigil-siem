@@ -1,0 +1,28 @@
+title: Web Attack - Blind SSRF via DNS Callback Domain
+id: web-blind-ssrf-dns-001
+status: stable
+description: Detects Blind SSRF probes using out-of-band DNS callback domains (Burp Collaborator, interactsh, canarytokens). These indicate an attacker testing for SSRF vulnerabilities using callback infrastructure to detect DNS resolution from the server.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_burp:
+    source|startswith: "web:"
+    query|contains: "burpcollaborator.net"
+  sel_interact:
+    source|startswith: "web:"
+    query|contains: "interactsh.com"
+  sel_canary:
+    source|startswith: "web:"
+    query|contains: "canarytokens.com"
+  sel_oast:
+    source|startswith: "web:"
+    query|contains: "oast.pro"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized security testing (pentest engagements using callback infrastructure)
+level: high

@@ -1,0 +1,21 @@
+title: Web Attack - SSRF via URL Parameter
+id: web-ssrf-param-001
+status: stable
+description: Detects SSRF attempts via common URL redirect/callback parameters containing http(s) schemes. Attackers use SSRF to pivot to internal services, metadata endpoints, and cloud credential APIs.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.credential_access
+  - attack.t1552.005
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    query|re: "(url|redirect|return|next|goto|dest|destination|target|callback|redir|location|src|source|link)=https?://"
+  condition: selection
+falsepositives:
+  - Legitimate OAuth redirect_uri parameters, SSO callback URLs (suppress known app patterns)
+level: high

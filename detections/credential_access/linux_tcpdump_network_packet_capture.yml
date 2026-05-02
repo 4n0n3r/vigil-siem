@@ -1,0 +1,23 @@
+title: Linux - Tcpdump Network Packet Capture
+id: linux-tcpdump-001
+status: stable
+description: Detects tcpdump execution. Attackers run packet capture tools to intercept network traffic, capture credentials transmitted in plaintext, perform ARP poisoning analysis, or exfiltrate captured data for offline analysis.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1040
+  - attack.discovery
+logsource:
+  product: linux
+detection:
+  sel_tcpdump:
+    source|startswith: "journald:"
+    _COMM: "tcpdump"
+  sel_tshark:
+    source|startswith: "journald:"
+    _COMM: "tshark"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized network troubleshooting by administrators (must not occur without change ticket)
+level: medium

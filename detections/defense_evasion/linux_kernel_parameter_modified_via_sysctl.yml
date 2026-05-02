@@ -1,0 +1,27 @@
+title: Linux - Kernel Parameter Modified via sysctl
+id: linux-sysctl-modify-001
+status: stable
+description: Detects sysctl process execution or kernel parameter modification messages. Attackers modify kernel parameters to disable ASLR, enable IP forwarding for traffic pivoting, or disable dmesg restrictions.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+  - attack.lateral_movement
+logsource:
+  product: linux
+detection:
+  sel_sysctl:
+    source|startswith: "journald:"
+    _COMM: "sysctl"
+    MESSAGE|contains: "="
+  sel_aslr:
+    source|startswith: "journald:"
+    MESSAGE|contains: "randomize_va_space"
+  sel_forward:
+    source|startswith: "journald:"
+    MESSAGE|contains: "ip_forward"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized kernel tuning by system administrators, container runtime configuration
+level: medium

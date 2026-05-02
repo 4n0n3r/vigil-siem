@@ -1,0 +1,20 @@
+title: Web Attack - HTTP CONNECT Proxy Tunnel Attempt
+id: web-http-connect-001
+status: stable
+description: Detects HTTP CONNECT method requests. Attackers use CONNECT to tunnel arbitrary TCP traffic (including C2 and RDP) through web servers misconfigured as open proxies, bypassing network firewall rules.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.command_and_control
+  - attack.t1572
+  - attack.defense_evasion
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    method: "CONNECT"
+  condition: selection
+falsepositives:
+  - Legitimate HTTPS proxy traffic (should not reach application servers directly)
+level: high

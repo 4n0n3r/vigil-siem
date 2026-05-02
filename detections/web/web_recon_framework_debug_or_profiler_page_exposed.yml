@@ -1,0 +1,28 @@
+title: Web Recon - Framework Debug or Profiler Page Exposed
+id: web-debug-profiler-001
+status: stable
+description: Detects access to framework debug and profiler interfaces (Laravel Telescope, Symfony Profiler, Django Debug, Rails /_routes). These expose application internals, environment variables, SQL queries, and session data.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.discovery
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_telescope:
+    source|startswith: "web:"
+    path|startswith: "/telescope"
+  sel_profiler:
+    source|startswith: "web:"
+    path|startswith: "/_profiler"
+  sel_debug:
+    source|startswith: "web:"
+    path|startswith: "/__debug__"
+  sel_debugbar:
+    source|startswith: "web:"
+    path|startswith: "/_debugbar"
+  condition: 1 of sel_*
+falsepositives:
+  - Development environments with debug tools enabled (must not be exposed on production)
+level: medium

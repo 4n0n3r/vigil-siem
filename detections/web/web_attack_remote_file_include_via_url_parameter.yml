@@ -1,0 +1,20 @@
+title: Web Attack - Remote File Include via URL Parameter
+id: web-rfi-param-001
+status: stable
+description: Detects PHP Remote File Inclusion attempts via common include/file/page parameters pointing to remote PHP scripts. RFI allows direct arbitrary code execution if allow_url_include is enabled.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    query|re: "(include|require|file|page|module|template|lang|view|document)=https?://[^&]+\\.php"
+  condition: selection
+falsepositives:
+  - None expected in non-PHP environments; PHP apps should disable allow_url_include
+level: high

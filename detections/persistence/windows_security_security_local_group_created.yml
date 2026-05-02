@@ -1,0 +1,20 @@
+title: Windows Security - Security Local Group Created
+id: win-sec-4731-001
+status: stable
+description: Detects creation of a new security-enabled local group (Event ID 4731). New local groups may be used to establish unauthorized access control lists on local resources.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1136
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4731
+  condition: selection
+falsepositives:
+  - Authorized IT group provisioning
+level: high

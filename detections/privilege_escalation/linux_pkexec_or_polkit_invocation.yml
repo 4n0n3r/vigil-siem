@@ -1,0 +1,24 @@
+title: Linux - Pkexec or Polkit Invocation
+id: linux-pkexec-001
+status: stable
+description: Detects pkexec invocations logged via PAM or systemd. CVE-2021-4034 (PwnKit) allows unprivileged users to gain root via pkexec. Any unexpected pkexec usage warrants review, especially on unpatched systems.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.privilege_escalation
+  - attack.t1548
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_auth:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "pkexec"
+  sel_pam:
+    source|startswith: "journald:"
+    MESSAGE|contains: "pkexec"
+    MESSAGE|contains: "authentication failure"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate GUI application privilege escalation (e.g., software center, disk utility)
+level: medium

@@ -1,0 +1,22 @@
+title: Web Recon - Exposed Source Map File Access
+id: web-sourcemap-001
+status: stable
+description: Detects access to JavaScript source map files (.map). Exposed source maps reconstruct minified JavaScript into original source code, revealing application logic, internal endpoints, and hardcoded secrets.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_map:
+    source|startswith: "web:"
+    extension: "map"
+  sel_js_map:
+    source|startswith: "web:"
+    path|re: "\\.js\\.map$"
+  condition: 1 of sel_*
+falsepositives:
+  - Development environments with source maps enabled (must be disabled in production)
+level: medium

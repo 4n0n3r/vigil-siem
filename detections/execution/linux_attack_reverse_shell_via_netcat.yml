@@ -1,0 +1,26 @@
+title: Linux Attack - Reverse Shell via Netcat
+id: linux-revshell-nc-001
+status: stable
+description: Detects netcat being used to spawn an interactive shell, the most common post-exploitation reverse shell technique on Linux.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.execution
+  - attack.t1059.004
+  - attack.command_and_control
+logsource:
+  product: linux
+detection:
+  sel_nc_e:
+    source|startswith: "journald:"
+    MESSAGE|contains: "nc -e /bin/"
+  sel_nc_c:
+    source|startswith: "journald:"
+    MESSAGE|contains: "nc -c bash"
+  sel_ncat:
+    source|startswith: "journald:"
+    MESSAGE|contains: "ncat --sh-exec"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected in production environments
+level: critical

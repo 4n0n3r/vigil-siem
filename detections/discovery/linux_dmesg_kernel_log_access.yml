@@ -1,0 +1,19 @@
+title: Linux - dmesg Kernel Log Access
+id: linux-dmesg-access-001
+status: stable
+description: Detects dmesg execution via the process comm field. Attackers read kernel logs to fingerprint kernel version, identify loaded modules, detect security monitoring tools, and map hardware for privilege escalation planning.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.discovery
+  - attack.t1082
+logsource:
+  product: linux
+detection:
+  selection:
+    source|startswith: "journald:"
+    _COMM: "dmesg"
+  condition: selection
+falsepositives:
+  - System administrators and monitoring tools reading kernel messages (common)
+level: low

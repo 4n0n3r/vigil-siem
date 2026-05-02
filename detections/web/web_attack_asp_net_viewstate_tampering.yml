@@ -1,0 +1,20 @@
+title: Web Attack - ASP.NET ViewState Tampering
+id: web-viewstate-001
+status: stable
+description: Detects __VIEWSTATE parameter manipulation in query strings. Insecurely configured ASP.NET applications with known machine keys are vulnerable to ViewState deserialization RCE — a common path for .NET web application compromise.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    query|contains: "__VIEWSTATE"
+  condition: selection
+falsepositives:
+  - Legitimate ASP.NET form submissions passing ViewState via GET (unusual — normally POST)
+level: medium

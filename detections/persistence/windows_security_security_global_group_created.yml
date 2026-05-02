@@ -1,0 +1,20 @@
+title: Windows Security - Security Global Group Created
+id: win-sec-4727-001
+status: stable
+description: Detects creation of a new security-enabled global group (Event ID 4727). Attackers create shadow groups for persistent privileged access that evades review of known privileged groups.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1136
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4727
+  condition: selection
+falsepositives:
+  - Authorized IT group provisioning
+level: high

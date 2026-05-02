@@ -1,0 +1,19 @@
+title: Linux Kernel - OOM Killer Invoked
+id: linux-oom-kill-001
+status: stable
+description: Detects the Linux OOM (Out of Memory) killer terminating processes. Repeated OOM events may indicate a cryptominer, memory leak exploit, or resource exhaustion attack (fork bomb, reverse shell payload consuming RAM).
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.impact
+  - attack.t1499
+logsource:
+  product: linux
+detection:
+  selection:
+    source|startswith: "journald:"
+    MESSAGE|contains: "Out of memory: Killed process"
+  condition: selection
+falsepositives:
+  - Legitimate application memory leaks or large batch processing jobs
+level: medium

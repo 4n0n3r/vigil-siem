@@ -53,6 +53,22 @@ Healthy response: `api_status:"ok"`, `clickhouse_status:"ok"`, `postgres_status:
 
 **Source prefixes:** `winlog:` `syslog:` `journald:` `file:` `forensic:` `cloudtrail:` `azure:` `gcp:` `web:<appname>`
 
+### Connect mode commands
+
+Connect mode gives AI agents structured access to existing SIEMs (Wazuh, Elastic) without deploying new agents on endpoints.
+
+| Command | Key flags | Key response fields |
+|---|---|---|
+| `vigil connector add wazuh` | `--name <s>` `--indexer-url <url>` `--indexer-user <s>` `--indexer-pass <s>` `--no-verify-ssl` | `id`, `name`, `siem_type`, `enabled` |
+| `vigil connector add elastic` | `--name <s>` `--url <url>` `--api-key <s>` `--no-verify-ssl` | `id`, `name`, `siem_type`, `enabled` |
+| `vigil connector list` | — | `connectors[]`, `total` |
+| `vigil connector test <id>` | — | `id`, `status`, `latency_ms` |
+| `vigil connector remove <id>` | `--confirm` (**human required**) | `id`, `deleted:true` |
+| `vigil feed alerts` | `--severity` `--since <duration>` | `alerts[]`, `total` |
+| `vigil feed context <connector_id> <native_id>` | `--window <duration>` | `events[]`, `total`, `source_siem` |
+
+---
+
 **Sigma modifiers supported:** `contains` `startswith` `endswith` `re`
 
 **Condition syntax:** `AND` `OR` `NOT` `1 of X*` `all of X*`
@@ -78,6 +94,12 @@ Healthy response: `api_status:"ok"`, `clickhouse_status:"ok"`, `postgres_status:
 | `CLOUD_NOT_COMPILED` | Binary not built with `-tags cloud`; run `make build-cloud` |
 | `CLOUD_UNKNOWN_PROVIDER` | `--provider` value not one of: `aws`, `azure`, `gcp` |
 | `COMMAND_ERROR` | Unknown command or flag |
+| `CONNECTOR_NOT_FOUND` | Connector ID does not exist |
+| `CONNECTOR_FETCH_ERROR` | SIEM returned an error during alert fetch |
+| `CONNECTOR_CONTEXT_ERROR` | SIEM returned an error during context fetch |
+| `UNSUPPORTED_SIEM_TYPE` | `siem_type` not in supported list: `wazuh`, `elastic` |
+| `CONNECTOR_NAME_CONFLICT` | A connector with this name already exists |
+| `CONNECTOR_CONFIG_INVALID` | Missing required config keys for this SIEM type |
 
 ---
 
@@ -445,22 +467,125 @@ vigil web start --port 3000 --output json
 
 ---
 
-## HITL approval flow
+## Connect mode skills
 
-When Vigil holds an action as a pending approval (Phase 4+):
+Use these when Vigil is connected to an existing SIEM via `vigil connector add`.
+
+### `onboard_connector_wazuh`
+**Trigger:** "connect Wazuh", "add Wazuh connector", "point Vigil at Wazuh"
+
+Wazuh exposes two APIs. The connector only needs the OpenSearch indexer (port 9200).
 
 ```bash
+vigil status --output json   # confirm API reachable
+
+vigil connector add wazuh \
+  --name <display-name> \
+  --indexer-url https://<wazuh-indexer>:9200 \
+  --indexer-user admin \
+  --indexer-pass <password> \
+  --output json
+# Note the returned id
+
+vigil connector test <id> --output json
+# status must be "ok" before proceeding
+```
+
+**Troubleshooting:**
+- `connection refused` → wrong indexer URL or port
+- `401` → wrong credentials (default Wazuh indexer: admin/admin — change in production)
+- `CONNECTOR_CONFIG_INVALID` → missing `--indexer-url` or `--indexer-user`/`--indexer-pass`
+
+Context fetch requires Wazuh archives enabled in ossec.conf: `<logall_json>yes</logall_json>`.
+Without this, `vigil feed context` falls back to nearby alerts from the same agent only.
+
+---
+
+### `onboard_connector_elastic`
+**Trigger:** "connect Elastic", "add Elastic connector", "connect Elastic Security"
+
+```bash
+# Create an API key in Kibana:
+# Stack Management → API Keys → Create API key
+# Type: Restricted — grant read on .alerts-security.* and logs-*
+# Copy the base64-encoded value shown as "Encoded"
+
+vigil status --output json
+
+vigil connector add elastic \
+  --name <display-name> \
+  --url https://<elastic>:9200 \
+  --api-key <base64-key> \
+  --output json
+
+vigil connector test <id> --output json
+# status must be "ok"
+
+vigil feed alerts --severity high --since 1h --output json
+# confirm alerts arrive from the connected Elastic deployment
+```
+
+---
+
+### `investigate_feed_alert`
+**Trigger:** alert from `vigil feed alerts` needs investigation
+
+```bash
+# 1. Pull recent high-severity alerts from all connected SIEMs
+vigil feed alerts --severity high --since 1h --output json
+# Extract: connector_id, native_id, hostname from response
+
+# 2. Get surrounding log context (±15m window)
+vigil feed context <connector_id> <native_id> --window 15m --output json
+# Returns raw log events from the same host in the window before the alert
+
+# 3. Check related alerts on the same host (last 24h)
+vigil feed alerts --since 24h --output json
+# Filter by hostname client-side: jq '[.alerts[] | select(.hostname == "<hostname>")]'
+
+# 4. Classify and act
+# False positive → vigil alerts acknowledge <native_id> --note "FP: <reason>" --output json
+# True positive  → document findings, escalate to human (see HITL section below)
+```
+
+**Wazuh alert fields to read directly (no normalization needed):**
+- `rule.description` — what fired
+- `rule.level` — 1-15 (12+ = critical)
+- `rule.mitre.technique` — MITRE ATT&CK IDs
+- `agent.name` / `agent.ip` — affected endpoint
+- `full_log` — original raw log line
+- `data.srcip` / `data.srcuser` — attacker source if parsed
+
+**Elastic alert fields:**
+- `kibana.alert.rule.name` — detection rule name
+- `kibana.alert.severity` — critical/high/medium/low
+- `kibana.alert.original_time` — when the event occurred
+- `host.name` / `source.ip` — affected host and source
+- `kibana.alert.reason` — human-readable explanation
+
+---
+
+## Human-in-the-Loop Approvals
+
+**Self-hosted (current):** `--confirm` is the approval gate for all destructive actions.
+Never pass `--confirm` without explicit human instruction.
+
+**Vigil Cloud:** Vigil holds high-risk actions as pending approvals and notifies your team
+via Slack, email, or Teams. The agent long-polls for a decision:
+
+- `approved` → proceed with the action
+- `rejected` → stop, report to user
+- `redirected` + `instruction` → read the instruction, re-plan, re-propose
+
+The redirect outcome is the key differentiator — humans can give the agent a corrective
+instruction rather than a binary yes/no, and the agent continues with the new constraint.
+
+```bash
+# Vigil Cloud only — not available on self-hosted
 vigil approvals get <approval_id> --output json
 ```
 
-Decision response fields: `status: "approved"|"rejected"|"other"`, `instruction` (when "other").
-
-- `approved` → proceed
-- `rejected` → stop, report to user
-- `other` → read `instruction`, re-plan, re-propose
-
-Until Phase 4: destructive actions use `--confirm` as the only gate.
-**Never pass `--confirm` without explicit human instruction.**
+> [Join the Vigil Cloud waitlist →](https://vigil.so)
 
 ---
 

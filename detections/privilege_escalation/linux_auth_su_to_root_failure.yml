@@ -1,0 +1,23 @@
+title: Linux Auth - Su to Root Failure
+id: linux-su-root-fail-001
+status: stable
+description: Detects failed su escalation attempts targeting the root account. Repeated failures may indicate a low-privilege attacker attempting privilege escalation.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.privilege_escalation
+  - attack.t1548
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_fail:
+    source|startswith: "journald:"
+    MESSAGE|contains: "FAILED su for root"
+  sel_auth:
+    source|startswith: "journald:"
+    MESSAGE|contains: "su: FAILED"
+  condition: 1 of sel_*
+falsepositives:
+  - Users legitimately forgetting root password
+level: medium

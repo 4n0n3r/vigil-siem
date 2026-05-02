@@ -1,0 +1,34 @@
+title: Linux - Python or Perl Reverse Shell One-liner
+id: linux-revshell-scripting-001
+status: stable
+description: Detects Python and Perl reverse shell one-liners using socket and process duplication (os.dup2) or exec patterns. Standard post-exploitation technique when nc or bash TCP is unavailable.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.execution
+  - attack.t1059.006
+  - attack.command_and_control
+  - attack.t1071
+logsource:
+  product: linux
+detection:
+  py_dup2:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "python"
+      - "os.dup2"
+  py_socket:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "python"
+      - "import socket"
+  perl_exec:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "perl"
+      - "socket"
+      - "exec"
+  condition: 1 of py_* or 1 of perl_*
+falsepositives:
+  - None expected in production environments
+level: critical

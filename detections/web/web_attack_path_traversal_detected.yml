@@ -1,0 +1,19 @@
+title: Web Attack - Path Traversal Detected
+id: web-path-traversal-001
+status: stable
+description: Detects path traversal attempts including URL-encoded variants (../, %2e%2e, %2f.., ..%5c). Pre-computed has_traversal flag handles all encoding variants at collector level.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    has_traversal: true
+  condition: selection
+falsepositives:
+  - CMS plugins using relative path navigation (suppress specific known paths)
+level: high

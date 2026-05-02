@@ -1,0 +1,31 @@
+title: Linux - Cron Job Executing Download Tool
+id: linux-cron-download-001
+status: stable
+description: Detects cron-executed commands containing network download tools. Attackers schedule cron jobs with curl/wget to repeatedly download updated payloads or C2 configuration from remote hosts.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1053.003
+  - attack.command_and_control
+  - attack.t1105
+logsource:
+  product: linux
+detection:
+  sel_curl:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "CRON"
+    MESSAGE|contains: "curl"
+  sel_wget:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "CRON"
+    MESSAGE|contains: "wget"
+  sel_python:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "CRON"
+    MESSAGE|contains: "python"
+    MESSAGE|contains: "http"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate cron jobs performing scheduled downloads (update scripts, backup retrieval)
+level: high

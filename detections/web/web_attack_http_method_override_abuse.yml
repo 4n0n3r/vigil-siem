@@ -1,0 +1,22 @@
+title: Web Attack - HTTP Method Override Abuse
+id: web-method-override-001
+status: stable
+description: Detects HTTP method override via _method query parameter. Attackers use this to issue DELETE, PUT, or PATCH requests through firewalls or WAFs that only allow GET/POST, bypassing access controls.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_method_param:
+    source|startswith: "web:"
+    query|re: "_method=(DELETE|PUT|PATCH|HEAD|OPTIONS|TRACE)"
+  sel_method_path:
+    source|startswith: "web:"
+    path|re: "_method=(DELETE|PUT|PATCH)"
+  condition: 1 of sel_*
+falsepositives:
+  - Legacy Rails or Laravel applications using method override for legitimate form submissions
+level: medium

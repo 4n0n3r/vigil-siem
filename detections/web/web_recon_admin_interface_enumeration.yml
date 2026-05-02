@@ -1,0 +1,19 @@
+title: Web Recon - Admin Interface Enumeration
+id: web-admin-enum-001
+status: stable
+description: Detects HTTP requests to known admin interface paths. Pre-computed is_admin_path field covers /admin, /wp-admin, /console, /dashboard, /cpanel, and similar prefixes.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.discovery
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    is_admin_path: true
+  condition: selection
+falsepositives:
+  - Legitimate admin access (suppress by known internal IP or admin user source)
+level: low

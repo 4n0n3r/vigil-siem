@@ -1,0 +1,20 @@
+title: Web Recon - Request with No or Empty User-Agent
+id: web-no-useragent-001
+status: stable
+description: Detects HTTP requests with empty or absent user-agent headers. Automated tools and attacker scripts often omit the User-Agent header, and legitimate browsers always send one. Useful for detecting raw exploit tooling.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    ua_category: "unknown"
+    user_agent: ""
+  condition: selection
+falsepositives:
+  - Misconfigured monitoring scripts, health checks without User-Agent header
+level: medium

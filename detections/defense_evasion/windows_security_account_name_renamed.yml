@@ -1,0 +1,22 @@
+title: Windows Security - Account Name Renamed
+id: win-sec-4781-001
+status: stable
+description: Detects account rename events (Event ID 4781). Attackers rename built-in accounts (Administrator, Guest) to hide their presence or rename newly created backdoor accounts to mimic legitimate system accounts.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1036.005
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4781
+  condition: selection
+falsepositives:
+  - Authorized account rename as part of naming standard enforcement
+level: high

@@ -1,0 +1,20 @@
+title: Windows Security - User Added to Local Security Group
+id: win-sec-4732-001
+status: stable
+description: Detects a member being added to a security-enabled local group (Event ID 4732). Local Administrators group additions grant full local system control.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4732
+  condition: selection
+falsepositives:
+  - Authorized role provisioning by IT administrators
+level: high

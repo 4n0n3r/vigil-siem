@@ -1,0 +1,28 @@
+title: Web Recon - Non-Git Version Control Repository Probe
+id: web-vcs-probe-001
+status: stable
+description: Detects probes targeting exposed Subversion (.svn), Mercurial (.hg), or Bazaar (.bzr) repository directories. Exposed VCS metadata can reveal full source code history, credentials, and repository structure.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_svn:
+    source|startswith: "web:"
+    path|contains: "/.svn/"
+  sel_hg:
+    source|startswith: "web:"
+    path|contains: "/.hg/"
+  sel_bzr:
+    source|startswith: "web:"
+    path|contains: "/.bzr/"
+  sel_cvs:
+    source|startswith: "web:"
+    path|contains: "/CVS/"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — VCS directories should not be web-accessible
+level: medium

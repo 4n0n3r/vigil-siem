@@ -1,0 +1,24 @@
+title: Web Attack - Server Error Response on Sensitive Path
+id: web-5xx-sensitive-001
+status: stable
+description: Detects 5xx server errors on sensitive or admin paths. Application errors on attack-targeted paths may reveal stack traces, internal paths, framework versions, or indicate partially successful exploitation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_admin_error:
+    source|startswith: "web:"
+    is_admin_path: true
+    status_class: "5xx"
+  sel_sensitive_error:
+    source|startswith: "web:"
+    is_sensitive_path: true
+    status_class: "5xx"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate application errors on admin pages during maintenance or misconfiguration
+level: medium

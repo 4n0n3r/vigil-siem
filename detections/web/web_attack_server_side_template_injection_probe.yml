@@ -1,0 +1,28 @@
+title: Web Attack - Server-Side Template Injection Probe
+id: web-ssti-probe-001
+status: stable
+description: Detects SSTI probes using arithmetic payloads for Jinja2, Twig, Mako, Smarty, and EL template engines. Successful SSTI leads to remote code execution within the application process.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_jinja:
+    source|startswith: "web:"
+    query|contains: "{{7*7}}"
+  sel_el:
+    source|startswith: "web:"
+    query|re: "\\$\\{7\\*7\\}"
+  sel_arithmetic:
+    source|startswith: "web:"
+    query|contains: "{{7*'7'}}"
+  sel_path:
+    source|startswith: "web:"
+    path|re: "\\{\\{|\\$\\{[0-9]"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — arithmetic template syntax in requests is always anomalous
+level: high

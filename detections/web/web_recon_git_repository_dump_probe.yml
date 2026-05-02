@@ -1,0 +1,19 @@
+title: Web Recon - Git Repository Dump Probe
+id: web-git-dump-001
+status: stable
+description: Detects attempts to access exposed .git repository files that may allow source code disclosure.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    path|contains: "/.git/"
+  condition: selection
+falsepositives:
+  - Developer tools (suppress if needed)
+level: high

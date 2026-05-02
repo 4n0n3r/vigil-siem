@@ -1,0 +1,26 @@
+title: Web Attack - Java Deserialization Magic Bytes in Request
+id: web-java-deser-001
+status: stable
+description: Detects Java serialized object magic bytes in HTTP requests. Attackers send crafted serialized payloads to vulnerable Java endpoints (Apache Commons Collections, Log4j, Spring, etc.) for remote code execution.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+logsource:
+  product: web
+detection:
+  sel_hex:
+    source|startswith: "web:"
+    query|contains: "%AC%ED"
+  sel_b64:
+    source|startswith: "web:"
+    query|contains: "rO0AB"
+  sel_path:
+    source|startswith: "web:"
+    path|contains: "%AC%ED"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate Java serialization over HTTP (should use JSON/XML — no legitimate use case for raw Java serial in GET params)
+level: high

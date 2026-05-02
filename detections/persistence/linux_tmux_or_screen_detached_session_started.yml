@@ -1,0 +1,22 @@
+title: Linux - Tmux or Screen Detached Session Started
+id: linux-tmux-screen-001
+status: stable
+description: Detects tmux or screen multiplexer process execution via the comm field. Attackers use detached terminal sessions to maintain persistence through SSH disconnects and hide interactive C2 sessions from process listings.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1059.004
+logsource:
+  product: linux
+detection:
+  sel_tmux:
+    source|startswith: "journald:"
+    _COMM: "tmux"
+  sel_screen:
+    source|startswith: "journald:"
+    _COMM: "screen"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate administrators using tmux/screen for long-running operations (expected and common)
+level: low

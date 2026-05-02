@@ -1,0 +1,20 @@
+title: Windows Security - Kerberos TGT Requested
+id: win-sec-4768-001
+status: stable
+description: Detects Kerberos Ticket Granting Ticket requests (Event ID 4768). Baseline rule — high volume from a single account or unusual hours may indicate AS-REP roasting or lateral movement setup.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1558
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4768
+  condition: selection
+falsepositives:
+  - All normal Kerberos authentication (high volume expected in domain environments)
+level: low

@@ -1,0 +1,24 @@
+title: Web Attack - PHP Object Injection in Query
+id: web-php-object-inject-001
+status: stable
+description: Detects PHP serialized object injection via the O:<n>:"<class>" pattern in query strings. Exploiting unsafe unserialize() leads to property injection, RCE via magic methods, or file inclusion chains.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+logsource:
+  product: web
+detection:
+  sel_object:
+    source|startswith: "web:"
+    query|re: "O:[0-9]+:\""
+  sel_array:
+    source|startswith: "web:"
+    query|re: "a:[0-9]+:\\{"
+    query|contains: "O:"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate PHP applications passing serialized data via GET (should use POST with CSRF protection)
+level: high

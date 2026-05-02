@@ -1,0 +1,26 @@
+title: Linux - SUID Bit Set on File via chmod
+id: linux-suid-chmod-001
+status: stable
+description: Detects chmod commands setting the SUID bit (4xxx permissions or u+s). Attackers set SUID on shells or custom binaries to create persistent privilege escalation paths executable by any user.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.privilege_escalation
+  - attack.t1548.001
+  - attack.persistence
+logsource:
+  product: linux
+detection:
+  sel_octal:
+    source|startswith: "journald:"
+    MESSAGE|contains: "chmod"
+    MESSAGE|re: "chmod\s+[467][0-9]{3}"
+  sel_symbolic:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "chmod"
+      - "u+s"
+  condition: 1 of sel_*
+falsepositives:
+  - Package installations legitimately setting SUID on system utilities (ping, su, passwd)
+level: high

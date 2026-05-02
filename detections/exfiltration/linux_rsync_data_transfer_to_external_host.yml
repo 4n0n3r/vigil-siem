@@ -1,0 +1,19 @@
+title: Linux - Rsync Data Transfer to External Host
+id: linux-rsync-exfil-001
+status: stable
+description: Detects rsync process execution. Rsync is commonly used by attackers for efficient incremental data exfiltration due to its delta-compression and SSH tunneling support. Low severity baseline rule.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.exfiltration
+  - attack.t1048
+logsource:
+  product: linux
+detection:
+  selection:
+    source|startswith: "journald:"
+    _COMM: "rsync"
+  condition: selection
+falsepositives:
+  - Authorized backup and synchronization jobs (high FP rate — baseline expected rsync activity)
+level: low

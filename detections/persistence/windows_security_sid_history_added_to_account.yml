@@ -1,0 +1,21 @@
+title: Windows Security - SID History Added to Account
+id: win-sec-4765-001
+status: stable
+description: Detects SID History addition to a user account (Event ID 4765). Attackers add the Domain Admins SID to a low-privilege account SID history to grant covert persistent domain-admin-level access without group membership.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1134.005
+  - attack.privilege_escalation
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4765
+  condition: selection
+falsepositives:
+  - Authorized domain migration with SID history preservation (extremely rare outside migrations)
+level: critical

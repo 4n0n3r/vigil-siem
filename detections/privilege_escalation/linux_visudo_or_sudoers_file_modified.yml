@@ -1,0 +1,27 @@
+title: Linux - Visudo or Sudoers File Modified
+id: linux-sudoers-modify-001
+status: stable
+description: Detects visudo process execution or sudoers modification patterns in journald. Adding NOPASSWD: ALL to sudoers grants passwordless root escalation to any user — a common post-compromise persistence technique.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1548.003
+  - attack.privilege_escalation
+logsource:
+  product: linux
+detection:
+  sel_visudo:
+    source|startswith: "journald:"
+    _COMM: "visudo"
+  sel_nopasswd:
+    source|startswith: "journald:"
+    MESSAGE|contains: "NOPASSWD: ALL"
+  sel_sudo_all:
+    source|startswith: "journald:"
+    MESSAGE|contains: "ALL=(ALL) ALL"
+    MESSAGE|contains: "NOPASSWD"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized system administrators modifying sudo policy via change management
+level: critical

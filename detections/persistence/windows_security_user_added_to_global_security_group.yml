@@ -1,0 +1,20 @@
+title: Windows Security - User Added to Global Security Group
+id: win-sec-4728-001
+status: stable
+description: Detects a member being added to a security-enabled global group (Event ID 4728). Adding accounts to privileged groups (Domain Admins, etc.) is a primary persistence technique.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4728
+  condition: selection
+falsepositives:
+  - Authorized role provisioning by IT administrators
+level: high

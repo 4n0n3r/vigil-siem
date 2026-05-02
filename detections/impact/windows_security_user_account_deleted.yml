@@ -1,0 +1,20 @@
+title: Windows Security - User Account Deleted
+id: win-sec-4726-001
+status: stable
+description: Detects user account deletion (Event ID 4726). Attackers delete accounts to cover tracks, remove forensic evidence, or lock out legitimate users after takeover.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1531
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4726
+  condition: selection
+falsepositives:
+  - Authorized IT account offboarding
+level: high

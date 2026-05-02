@@ -1,0 +1,20 @@
+title: Windows Security - User Account Enabled
+id: win-sec-4722-001
+status: stable
+description: Detects a user account being enabled (Event ID 4722). Attackers re-enable disabled accounts (especially built-in Administrator or Guest) to gain access without creating new accounts that trigger alerting.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4722
+  condition: selection
+falsepositives:
+  - Authorized IT re-enabling accounts after disability period
+level: medium

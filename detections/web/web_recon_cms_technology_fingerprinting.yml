@@ -1,0 +1,28 @@
+title: Web Recon - CMS Technology Fingerprinting
+id: web-cms-fingerprint-001
+status: stable
+description: Detects HTTP probes targeting CMS-specific API and admin paths used to identify the underlying platform before exploitation. Covers WordPress REST API, Joomla, Drupal, and Umbraco.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_wpjson:
+    source|startswith: "web:"
+    path|startswith: "/wp-json/"
+  sel_joomla:
+    source|startswith: "web:"
+    path|contains: "/components/com_"
+  sel_drupal:
+    source|startswith: "web:"
+    path|startswith: "/sites/default/"
+  sel_umbraco:
+    source|startswith: "web:"
+    path|startswith: "/umbraco"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate CMS users and administrators accessing normal paths
+level: low

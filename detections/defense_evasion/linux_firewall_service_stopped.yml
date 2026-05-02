@@ -1,0 +1,34 @@
+title: Linux - Firewall Service Stopped
+id: linux-firewall-stopped-001
+status: stable
+description: Detects systemd stopping host firewall services (ufw, iptables, firewalld, nftables). Attackers disable firewalls to enable outbound C2 channels and inbound access without port restrictions.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.defense_evasion
+  - attack.t1562.004
+logsource:
+  product: linux
+detection:
+  sel_ufw:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "ufw"
+      - "Stopped"
+  sel_firewalld:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "firewalld"
+      - "Stopped"
+  sel_iptables:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "iptables"
+      - "Stopped"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized maintenance requiring temporary firewall disabling (must be documented)
+level: high

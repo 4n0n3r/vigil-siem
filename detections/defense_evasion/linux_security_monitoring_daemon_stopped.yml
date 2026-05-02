@@ -1,0 +1,34 @@
+title: Linux - Security Monitoring Daemon Stopped
+id: linux-secmon-stopped-001
+status: stable
+description: Detects systemd stopping key security monitoring services (auditd, fail2ban, apparmor). Attackers stop monitoring tools to evade detection before conducting noisy operations.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+logsource:
+  product: linux
+detection:
+  sel_auditd:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "auditd"
+      - "Stopped"
+  sel_fail2ban:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "fail2ban"
+      - "Stopped"
+  sel_apparmor:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "apparmor"
+      - "Stopped"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized maintenance requiring temporary disabling of monitoring agents
+level: high

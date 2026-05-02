@@ -1,0 +1,27 @@
+title: Linux - Auditd Configuration Modified
+id: linux-auditd-config-001
+status: stable
+description: Detects auditd configuration changes via auditctl process execution or audit.rules modification messages. Attackers modify audit rules to suppress logging of their own activities before conducting noisy operations.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+logsource:
+  product: linux
+detection:
+  sel_auditctl:
+    source|startswith: "journald:"
+    _COMM: "auditctl"
+  sel_rules:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "auditd"
+    MESSAGE|contains: "config change"
+  sel_delete:
+    source|startswith: "journald:"
+    MESSAGE|contains: "audit.rules"
+    MESSAGE|contains: "delete"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized security team modifying audit policy for coverage improvements
+level: high

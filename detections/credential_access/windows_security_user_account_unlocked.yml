@@ -1,0 +1,20 @@
+title: Windows Security - User Account Unlocked
+id: win-sec-4767-001
+status: stable
+description: Detects user account unlock events (Event ID 4767). Unexpected unlocks — especially outside helpdesk hours or for high-privilege accounts — may indicate an attacker resetting a locked account to regain access.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4767
+  condition: selection
+falsepositives:
+  - Helpdesk account unlock after legitimate lockout
+level: medium

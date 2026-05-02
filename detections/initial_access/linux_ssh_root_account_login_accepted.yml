@@ -1,0 +1,24 @@
+title: Linux SSH - Root Account Login Accepted
+id: linux-ssh-root-accepted-001
+status: stable
+description: Detects successful SSH authentication to the root account. Direct root SSH login is a severe misconfiguration — PermitRootLogin should be disabled. Any successful root login warrants immediate investigation.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.initial_access
+  - attack.t1078.003
+  - attack.privilege_escalation
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains|all:
+      - "Accepted"
+      - "root"
+  condition: selection
+falsepositives:
+  - Authorized root SSH in legacy environments where PermitRootLogin is intentionally enabled
+level: high

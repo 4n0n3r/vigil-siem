@@ -1,0 +1,20 @@
+title: Linux - LD_PRELOAD Environment Variable Injection
+id: linux-ld-preload-001
+status: stable
+description: Detects LD_PRELOAD references in journald messages. Attackers use LD_PRELOAD to inject malicious shared libraries into process address space, intercept system calls, and achieve stealthy code execution or privilege escalation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1574.006
+  - attack.privilege_escalation
+logsource:
+  product: linux
+detection:
+  selection:
+    source|startswith: "journald:"
+    MESSAGE|contains: "LD_PRELOAD"
+  condition: selection
+falsepositives:
+  - Legitimate debugging use of LD_PRELOAD for library interposition (developer environments)
+level: high

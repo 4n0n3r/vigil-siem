@@ -1,0 +1,21 @@
+title: Windows Security - NTLM Authentication Attempt
+id: win-sec-4776-001
+status: stable
+description: Detects NTLM credential validation attempts (Event ID 4776). High volume indicates NTLM brute force or relay attack. NTLM use in modern environments should be minimized — all usage is worth baselining.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.credential_access
+  - attack.t1557.001
+  - attack.t1110
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4776
+  condition: selection
+falsepositives:
+  - Legacy applications using NTLM authentication, workgroup environments
+level: low

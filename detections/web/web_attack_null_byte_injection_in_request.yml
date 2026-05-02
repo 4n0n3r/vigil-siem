@@ -1,0 +1,19 @@
+title: Web Attack - Null Byte Injection in Request
+id: web-nullbyte-001
+status: stable
+description: Detects null byte injection in HTTP request lines, used to bypass file extension filters and access restricted files.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.defense_evasion
+  - attack.t1027
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    request_line|contains: "%00"
+  condition: selection
+falsepositives:
+  - Malformed legitimate requests (very rare)
+level: high

@@ -1,0 +1,20 @@
+title: Windows Security - Workstation Session Locked
+id: win-sec-4800-001
+status: stable
+description: Detects workstation lock events (Event ID 4800). Useful for building user activity baselines and detecting anomalous session patterns (e.g., a locked workstation becoming unlocked remotely during off-hours).
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.discovery
+  - attack.t1033
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4800
+  condition: selection
+falsepositives:
+  - All normal user workstation locking activity
+level: low

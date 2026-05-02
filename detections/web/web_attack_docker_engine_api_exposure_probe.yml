@@ -1,0 +1,29 @@
+title: Web Attack - Docker Engine API Exposure Probe
+id: web-docker-api-001
+status: stable
+description: Detects HTTP probes targeting an exposed Docker Engine API. Access to the Docker socket API grants full host compromise via privileged container creation.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.execution
+  - attack.t1610
+logsource:
+  product: web
+detection:
+  sel_ping:
+    source|startswith: "web:"
+    path: "/_ping"
+  sel_containers:
+    source|startswith: "web:"
+    path|contains: "/containers/json"
+  sel_images:
+    source|startswith: "web:"
+    path|contains: "/images/json"
+  sel_exec:
+    source|startswith: "web:"
+    path|contains: "/exec"
+    path|contains: "/containers/"
+  condition: 1 of sel_*
+falsepositives:
+  - Docker health checks from orchestration layer (should not be publicly routable)
+level: high

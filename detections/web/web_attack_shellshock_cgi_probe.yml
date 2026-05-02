@@ -1,0 +1,26 @@
+title: Web Attack - Shellshock CGI Probe
+id: web-shellshock-001
+status: stable
+description: Detects Shellshock (CVE-2014-6271) exploitation attempts via the () { :; }; payload in HTTP headers, path, or query. Still actively scanned — any detection indicates automated or targeted exploitation attempt.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+logsource:
+  product: web
+detection:
+  sel_ua:
+    source|startswith: "web:"
+    user_agent|contains: "() {"
+  sel_path:
+    source|startswith: "web:"
+    path|contains: "() {"
+  sel_query:
+    source|startswith: "web:"
+    query|contains: "() {"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — this payload has no legitimate use in HTTP requests
+level: high

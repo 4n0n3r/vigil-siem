@@ -1,0 +1,20 @@
+title: Windows Security - Security Audit Log Cleared
+id: win-sec-1102-001
+status: stable
+description: Detects clearing of the Windows Security audit log (Event ID 1102). Log clearing is a primary indicator of an attacker covering their tracks after compromise. Near-zero false positive rate outside of explicit forensic disk imaging.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.defense_evasion
+  - attack.t1070.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 1102
+  condition: selection
+falsepositives:
+  - None expected in production — log clearing requires admin privileges
+level: critical

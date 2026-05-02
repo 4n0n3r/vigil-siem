@@ -1,0 +1,27 @@
+title: Linux SSH - Invalid User Probe
+id: linux-ssh-invalid-user-001
+status: stable
+description: Detects SSH connection attempts using usernames that do not exist on the system. High volume indicates automated scanning.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.reconnaissance
+  - attack.t1595
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_invalid:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains: "Invalid user"
+  sel_disconnect:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains: "Disconnected from invalid user"
+  condition: 1 of sel_*
+falsepositives:
+  - Typos by legitimate users
+level: medium

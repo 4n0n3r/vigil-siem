@@ -1,0 +1,24 @@
+title: Linux Auth - Repeated Su to Root Failure
+id: linux-su-root-fail-peruser-001
+status: stable
+description: Detects individual failed su elevation attempts targeting root. Per-event at low severity for baseline visibility — correlate manually for threshold investigation.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.privilege_escalation
+  - attack.t1548
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_fail:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "su"
+    MESSAGE|contains: "FAILED su for root"
+  sel_pam:
+    source|startswith: "journald:"
+    MESSAGE|contains: "pam_unix(su:auth): authentication failure"
+  condition: 1 of sel_*
+falsepositives:
+  - Users legitimately forgetting root password
+level: low

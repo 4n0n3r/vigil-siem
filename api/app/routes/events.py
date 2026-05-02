@@ -241,13 +241,23 @@ async def search_events(
     """Search stored events with optional time-range and substring filters."""
     t0 = time.monotonic()
 
-    results = await store.search_events(
-        query=query,
-        from_time=from_time,
-        to_time=to_time,
-        limit=limit,
-        endpoint_id=endpoint_id,
-    )
+    try:
+        results = await store.search_events(
+            query=query,
+            from_time=from_time,
+            to_time=to_time,
+            limit=limit,
+            endpoint_id=endpoint_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=ErrorResponse(
+                error_code="STORAGE_UNAVAILABLE",
+                message=str(exc),
+                hint="Set CLICKHOUSE_DSN to a reachable ClickHouse instance and restart the API.",
+            ).model_dump(),
+        ) from exc
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 

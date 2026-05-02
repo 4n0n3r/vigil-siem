@@ -1,0 +1,21 @@
+title: Windows Security - Kerberos Pre-Authentication Failure
+id: win-sec-4771-001
+status: stable
+description: Detects Kerberos pre-authentication failures (Event ID 4771). High volume indicates AS-REP Roasting (targeting accounts without pre-auth required) or Kerberos brute force.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1558.004
+  - attack.t1110
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4771
+  condition: selection
+falsepositives:
+  - Users with expired passwords, misconfigured Kerberos clients
+level: medium

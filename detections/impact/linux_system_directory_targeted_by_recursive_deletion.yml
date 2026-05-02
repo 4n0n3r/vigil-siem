@@ -1,0 +1,36 @@
+title: Linux - System Directory Targeted by Recursive Deletion
+id: linux-rm-system-dir-001
+status: stable
+description: Detects rm -rf targeting critical system directories. Indicates destructive impact or an attacker attempting to render a system unbootable after exfiltration.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.impact
+  - attack.t1485
+logsource:
+  product: linux
+detection:
+  sel_root:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "rm"
+      - "-rf /"
+  sel_etc:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "rm"
+      - "-rf /etc"
+  sel_boot:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "rm"
+      - "-rf /boot"
+  sel_var:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "rm"
+      - "-rf /var"
+  condition: 1 of sel_*
+falsepositives:
+  - Automated cleanup scripts targeting specific subdirectories (verify path specificity)
+level: high

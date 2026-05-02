@@ -1,0 +1,27 @@
+title: Linux - Binary Executing from Temporary Directory
+id: linux-tmp-exec-001
+status: stable
+description: Detects processes executing from world-writable temporary directories (/tmp, /dev/shm, /var/tmp). Attackers stage and execute malware from these directories to avoid writing to monitored paths and survive without persistent disk writes.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.execution
+  - attack.t1059.004
+  - attack.defense_evasion
+  - attack.t1027
+logsource:
+  product: linux
+detection:
+  sel_tmp:
+    source|startswith: "journald:"
+    _EXE|startswith: "/tmp/"
+  sel_devshm:
+    source|startswith: "journald:"
+    _EXE|startswith: "/dev/shm/"
+  sel_vartmp:
+    source|startswith: "journald:"
+    _EXE|startswith: "/var/tmp/"
+  condition: 1 of sel_*
+falsepositives:
+  - Build systems compiling and running tests in /tmp, package manager temp extraction
+level: critical

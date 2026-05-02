@@ -1,0 +1,31 @@
+title: Linux - Passwd or Shadow File Enumeration via Cat
+id: linux-etc-passwd-enum-001
+status: stable
+description: Detects direct enumeration of /etc/passwd or /etc/shadow via cat or similar commands in journald messages. Indicates credential file dumping after initial access — shadow file access requires root or shadow group membership.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1003.008
+logsource:
+  product: linux
+detection:
+  sel_passwd:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "cat"
+      - "/etc/passwd"
+  sel_shadow:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "cat"
+      - "/etc/shadow"
+  sel_shadow_less:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "/etc/shadow"
+      - "COMMAND="
+  condition: 1 of sel_*
+falsepositives:
+  - System administration scripts checking user accounts (low rate in production)
+level: high

@@ -1,0 +1,28 @@
+title: Linux - Cryptominer Process or Pool Indicators
+id: linux-cryptominer-001
+status: stable
+description: Detects cryptominer-related strings in journald messages — mining pool protocols, known miner binaries, and pool domain patterns. Cryptominers are frequently dropped as secondary payloads after initial compromise.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1496
+logsource:
+  product: linux
+detection:
+  sel_stratum:
+    source|startswith: "journald:"
+    MESSAGE|contains: "stratum+tcp"
+  sel_xmrig:
+    source|startswith: "journald:"
+    MESSAGE|contains: "xmrig"
+  sel_cpuminer:
+    source|startswith: "journald:"
+    MESSAGE|contains: "cpuminer"
+  sel_pool:
+    source|startswith: "journald:"
+    MESSAGE|re: "pool\\.(minexmr|supportxmr|nanopool|hashvault|xmrpool)\\."
+  condition: 1 of sel_*
+falsepositives:
+  - None expected in production environments
+level: high

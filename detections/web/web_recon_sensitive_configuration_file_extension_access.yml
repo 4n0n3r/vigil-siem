@@ -1,0 +1,31 @@
+title: Web Recon - Sensitive Configuration File Extension Access
+id: web-config-ext-001
+status: stable
+description: Detects HTTP access to configuration and log file extensions. Exposed config files commonly contain database credentials, API keys, and internal service addresses.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.credential_access
+  - attack.t1552.001
+  - attack.discovery
+logsource:
+  product: web
+detection:
+  sel_src:
+    source|startswith: "web:"
+  sel_ext:
+    extension:
+      - "conf"
+      - "cfg"
+      - "ini"
+      - "log"
+      - "yaml"
+      - "yml"
+      - "toml"
+      - "properties"
+      - "htpasswd"
+      - "ovpn"
+  condition: sel_src and sel_ext
+falsepositives:
+  - Legitimate configuration download endpoints (restrict to authenticated paths)
+level: medium

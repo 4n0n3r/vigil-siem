@@ -1,0 +1,20 @@
+title: Linux - Journald Rate Limit Suppression Triggered
+id: linux-journald-ratelimit-001
+status: stable
+description: Detects journald suppressing messages due to rate limit. High-volume log generation may indicate an attacker flooding logs to hide malicious activity, or a runaway process generating noise to obscure alerts.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.defense_evasion
+  - attack.t1562.006
+logsource:
+  product: linux
+detection:
+  selection:
+    source|startswith: "journald:"
+    MESSAGE|contains: "Suppressed"
+    MESSAGE|contains: "messages from"
+  condition: selection
+falsepositives:
+  - Verbose application logging during deployment or debugging
+level: low

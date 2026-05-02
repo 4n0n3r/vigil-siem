@@ -1,0 +1,30 @@
+title: Web Attack - Command Injection Pattern in Query
+id: web-cmdi-query-001
+status: stable
+description: Detects OS command injection patterns in query strings — semicolon/pipe-delimited shell commands, backtick subshells, and $() substitution targeting common reconnaissance commands.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+  - attack.t1059.004
+logsource:
+  product: web
+detection:
+  sel_semi:
+    source|startswith: "web:"
+    query|re: ";\\s*(id|whoami|ls|cat|wget|curl|bash|sh|python|perl|nc)\b"
+  sel_pipe:
+    source|startswith: "web:"
+    query|re: "\\|\\s*(id|whoami|ls|cat|wget|curl|bash|sh|python)\b"
+  sel_backtick:
+    source|startswith: "web:"
+    query|re: "`(id|whoami|ls|cat)`"
+  sel_dollar:
+    source|startswith: "web:"
+    query|re: "\\$\\((id|whoami|ls|cat)\\)"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate applications passing shell command names as data (extremely rare)
+level: high

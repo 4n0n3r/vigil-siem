@@ -1,0 +1,20 @@
+title: Web Attack - Insecure Direct Object Reference Probe
+id: web-idor-probe-001
+status: stable
+description: Detects sequential or manipulated numeric ID patterns in paths, suggesting IDOR enumeration. Attackers iterate object IDs to access unauthorized records (user profiles, invoices, messages, files).
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_seq:
+    source|startswith: "web:"
+    query|re: "(id|user_id|account_id|order_id|invoice_id|file_id)=[0-9]{1,8}"
+    status_class: "4xx"
+  condition: sel_seq
+falsepositives:
+  - Legitimate application errors on valid resource IDs (correlate with error frequency)
+level: medium

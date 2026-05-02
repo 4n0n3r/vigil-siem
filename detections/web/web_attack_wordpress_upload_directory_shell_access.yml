@@ -1,0 +1,29 @@
+title: Web Attack - WordPress Upload Directory Shell Access
+id: web-wp-uploads-shell-001
+status: stable
+description: Detects access to WordPress uploads directory for PHP/script files. Attackers upload web shells through vulnerable plugins to wp-content/uploads then access them directly for RCE.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1505.003
+  - attack.execution
+logsource:
+  product: web
+detection:
+  sel_src:
+    source|startswith: "web:"
+    path|contains: "/wp-content/uploads/"
+  sel_ext:
+    extension:
+      - "php"
+      - "phtml"
+      - "php5"
+      - "php7"
+      - "phar"
+      - "asp"
+      - "aspx"
+  condition: sel_src and sel_ext
+falsepositives:
+  - None expected — uploads directory must not execute server-side scripts
+level: high

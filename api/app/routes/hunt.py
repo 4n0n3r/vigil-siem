@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app import store
@@ -54,15 +54,25 @@ async def hunt(
             return JSONResponse(status_code=400, content=body.model_dump())
 
     t0 = time.perf_counter()
-    result = await store.hunt_events(
-        query=q,
-        from_time=from_,
-        to_time=to,
-        limit=limit,
-        agg_field=agg,
-        timeline=timeline,
-        endpoint_id=endpoint_id,
-    )
+    try:
+        result = await store.hunt_events(
+            query=q,
+            from_time=from_,
+            to_time=to,
+            limit=limit,
+            agg_field=agg,
+            timeline=timeline,
+            endpoint_id=endpoint_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=ErrorResponse(
+                error_code="STORAGE_UNAVAILABLE",
+                message=str(exc),
+                hint="Set CLICKHOUSE_DSN to a reachable ClickHouse instance and restart the API.",
+            ).model_dump(),
+        ) from exc
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
     raw_events: list = result.get("events", [])

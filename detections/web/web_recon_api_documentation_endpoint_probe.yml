@@ -1,0 +1,28 @@
+title: Web Recon - API Documentation Endpoint Probe
+id: web-api-docs-probe-001
+status: stable
+description: Detects probes to Swagger/OpenAPI documentation endpoints that expose complete API schemas, authentication requirements, and endpoint parameters. First step for automated API fuzzing and abuse.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_swagger:
+    source|startswith: "web:"
+    path|startswith: "/swagger"
+  sel_openapi:
+    source|startswith: "web:"
+    path|startswith: "/openapi"
+  sel_apidocs:
+    source|startswith: "web:"
+    path|startswith: "/api-docs"
+  sel_redoc:
+    source|startswith: "web:"
+    path|startswith: "/redoc"
+  condition: 1 of sel_*
+falsepositives:
+  - Internal developers using API documentation (suppress by source IP or auth status)
+level: low

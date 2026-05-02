@@ -1,0 +1,21 @@
+title: Linux Sudo - Command Not Allowed by Sudoers
+id: linux-sudo-denied-001
+status: stable
+description: Detects sudo denials where the invoking user is not permitted to run the requested command. Repeated denials from a single account may indicate a compromised low-privilege account testing privilege escalation options.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.privilege_escalation
+  - attack.t1548.003
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sudo"
+    MESSAGE|contains: "is not allowed to run sudo"
+  condition: selection
+falsepositives:
+  - Users legitimately attempting commands outside their sudo policy
+level: medium

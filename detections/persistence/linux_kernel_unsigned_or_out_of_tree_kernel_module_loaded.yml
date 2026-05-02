@@ -1,0 +1,27 @@
+title: Linux Kernel - Unsigned or Out-of-Tree Kernel Module Loaded
+id: linux-kmod-unsigned-001
+status: stable
+description: Detects loading of unsigned or out-of-tree kernel modules. Rootkits are commonly delivered as unsigned modules to intercept syscalls, hide processes, and maintain persistent undetectable access.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.persistence
+  - attack.t1547.006
+  - attack.defense_evasion
+  - attack.t1014
+logsource:
+  product: linux
+detection:
+  sel_unsigned:
+    source|startswith: "journald:"
+    MESSAGE|contains: "module verification failed"
+  sel_outtree:
+    source|startswith: "journald:"
+    MESSAGE|contains: "loading out-of-tree module taints kernel"
+  sel_disabled:
+    source|startswith: "journald:"
+    MESSAGE|contains: "module signature verification disabled"
+  condition: 1 of sel_*
+falsepositives:
+  - Third-party vendor drivers, custom in-house kernel modules (should be inventoried)
+level: high

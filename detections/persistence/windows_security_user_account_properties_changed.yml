@@ -1,0 +1,20 @@
+title: Windows Security - User Account Properties Changed
+id: win-sec-4738-001
+status: stable
+description: Detects user account attribute changes (Event ID 4738) including UAC flags, logon hours, and group membership. Attackers modify attributes to enable password-not-required flags or extend session validity.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4738
+  condition: selection
+falsepositives:
+  - Authorized IT account maintenance, automated provisioning systems
+level: medium

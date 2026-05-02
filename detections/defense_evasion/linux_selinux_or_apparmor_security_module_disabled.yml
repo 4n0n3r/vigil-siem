@@ -1,0 +1,25 @@
+title: Linux - SELinux or AppArmor Security Module Disabled
+id: linux-mac-disabled-001
+status: stable
+description: Detects disabling of Mandatory Access Control systems (SELinux, AppArmor). Attackers disable MAC frameworks to remove sandboxing restrictions before executing exploits or privilege escalation.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+logsource:
+  product: linux
+detection:
+  sel_selinux:
+    source|startswith: "journald:"
+    MESSAGE|contains: "SELinux is disabled"
+  sel_setenforce:
+    source|startswith: "journald:"
+    MESSAGE|contains: "SELinux:  Disabled"
+  sel_apparmor:
+    source|startswith: "journald:"
+    MESSAGE|contains: "AppArmor disabled"
+  condition: 1 of sel_*
+falsepositives:
+  - System administrator explicitly disabling MAC for troubleshooting (rare, should be documented)
+level: high

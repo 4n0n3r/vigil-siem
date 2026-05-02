@@ -1,0 +1,22 @@
+title: Web Attack - AWS Metadata SSRF Probe
+id: web-ssrf-aws-meta-001
+status: stable
+description: Detects SSRF attempts targeting the AWS EC2 metadata endpoint at 169.254.169.254, which could expose IAM credentials.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.credential_access
+  - attack.t1552.005
+logsource:
+  product: web
+detection:
+  src:
+    source|startswith: "web:"
+  path_hit:
+    path|contains: "169.254.169.254"
+  query_hit:
+    query|contains: "169.254.169.254"
+  condition: src and (path_hit or query_hit)
+falsepositives:
+  - None expected in legitimate traffic
+level: high

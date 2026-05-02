@@ -1,0 +1,28 @@
+title: Web Attack - XSS Probe in Query String
+id: web-xss-probe-001
+status: stable
+description: Detects cross-site scripting probes in query strings via script tags, javascript: URIs, and common DOM event handlers. Indicates active exploitation or automated scanner activity.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1189
+logsource:
+  product: web
+detection:
+  sel_script:
+    source|startswith: "web:"
+    query|re: "<script[\\s>]"
+  sel_javascript:
+    source|startswith: "web:"
+    query|contains: "javascript:"
+  sel_event:
+    source|startswith: "web:"
+    query|re: "on(error|load|click|mouseover|focus|keyup|keydown)="
+  sel_alert:
+    source|startswith: "web:"
+    query|re: "alert\\s*\\("
+  condition: 1 of sel_*
+falsepositives:
+  - Security testing tools, WAF bypass research (suppress known scanner IPs)
+level: medium

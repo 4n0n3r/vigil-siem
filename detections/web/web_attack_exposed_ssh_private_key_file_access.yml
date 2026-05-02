@@ -1,0 +1,28 @@
+title: Web Attack - Exposed SSH Private Key File Access
+id: web-ssh-key-access-001
+status: stable
+description: Detects HTTP access to SSH private key files by filename. Exposed private keys provide immediate persistent access to all systems where the corresponding public key is authorized.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1552.004
+logsource:
+  product: web
+detection:
+  sel_idrsa:
+    source|startswith: "web:"
+    path|contains: "id_rsa"
+  sel_idecdsa:
+    source|startswith: "web:"
+    path|contains: "id_ecdsa"
+  sel_ided25519:
+    source|startswith: "web:"
+    path|contains: "id_ed25519"
+  sel_idxmss:
+    source|startswith: "web:"
+    path|contains: "id_xmss"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — private key files must never be web-accessible
+level: critical

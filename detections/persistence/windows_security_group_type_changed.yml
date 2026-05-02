@@ -1,0 +1,20 @@
+title: Windows Security - Group Type Changed
+id: win-sec-4764-001
+status: stable
+description: Detects group type conversion (Event ID 4764). Attackers convert distribution groups to security groups to gain access control capabilities, enabling privilege assignment to groups that previously had none.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4764
+  condition: selection
+falsepositives:
+  - Authorized IT group restructuring as part of directory cleanup
+level: high

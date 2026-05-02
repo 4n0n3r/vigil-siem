@@ -1,0 +1,22 @@
+title: Windows PowerShell - Script Block Logging Triggered
+id: win-ps-4104-001
+status: stable
+description: Detects PowerShell script block logging events (Event ID 4104). Script blocks containing suspicious content are flagged by Windows as potential attacks. Indicates execution of encoded, obfuscated, or explicitly suspicious PowerShell code.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.execution
+  - attack.t1059.001
+  - attack.defense_evasion
+  - attack.t1027
+logsource:
+  product: windows
+  service: powershell
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4104
+  condition: selection
+falsepositives:
+  - Legitimate administrative scripts (review script content — this event includes the full block text)
+level: high

@@ -1,0 +1,26 @@
+title: Linux - FTP Client or Server Active
+id: linux-ftp-001
+status: stable
+description: Detects FTP client or server process execution. FTP transmits credentials and data in plaintext. Attackers use FTP for data exfiltration and as a simpler alternative to SCP when targeting legacy systems.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.exfiltration
+  - attack.t1048.003
+  - attack.command_and_control
+logsource:
+  product: linux
+detection:
+  sel_ftp:
+    source|startswith: "journald:"
+    _COMM: "ftp"
+  sel_ftpd:
+    source|startswith: "journald:"
+    _COMM: "ftpd"
+  sel_vsftpd:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "vsftpd"
+  condition: 1 of sel_*
+falsepositives:
+  - Legacy FTP-based transfer workflows (migrate to SFTP)
+level: medium

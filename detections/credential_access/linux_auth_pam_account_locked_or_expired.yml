@@ -1,0 +1,27 @@
+title: Linux Auth - PAM Account Locked or Expired
+id: linux-pam-account-locked-001
+status: stable
+description: Detects PAM account lock or expiry enforcement. May indicate faillock/pam_tally2 triggering after brute force attempts, or an expired account being probed.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_locked:
+    source|startswith: "journald:"
+    MESSAGE|contains: "account is locked"
+  sel_expired:
+    source|startswith: "journald:"
+    MESSAGE|contains: "account has expired"
+  sel_faillock:
+    source|startswith: "journald:"
+    MESSAGE|contains: "pam_faillock"
+    MESSAGE|contains: "Blocking"
+  condition: 1 of sel_*
+falsepositives:
+  - Users with legitimately expired accounts or IT-enforced account locks
+level: medium

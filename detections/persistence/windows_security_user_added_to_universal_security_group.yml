@@ -1,0 +1,21 @@
+title: Windows Security - User Added to Universal Security Group
+id: win-sec-4756-001
+status: stable
+description: Detects a member being added to a security-enabled universal group (Event ID 4756). Universal groups span the entire forest and typically include Enterprise Admins and Schema Admins — additions represent critical privilege escalation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+  - attack.privilege_escalation
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4756
+  condition: selection
+falsepositives:
+  - Authorized domain administrator role provisioning
+level: high

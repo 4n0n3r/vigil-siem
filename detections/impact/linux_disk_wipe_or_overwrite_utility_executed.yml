@@ -1,0 +1,33 @@
+title: Linux - Disk Wipe or Overwrite Utility Executed
+id: linux-disk-wipe-001
+status: stable
+description: Detects disk overwrite utilities targeting device nodes or critical directories. Attackers use dd and shred to destroy evidence, cover tracks, or execute destructive ransomware-like payloads.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.impact
+  - attack.t1561.001
+  - attack.defense_evasion
+  - attack.t1070
+logsource:
+  product: linux
+detection:
+  sel_dd_zero:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "dd"
+      - "if=/dev/zero"
+  sel_dd_rand:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "dd"
+      - "if=/dev/urandom"
+  sel_shred:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "shred"
+      - "--remove"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized secure disk erasure procedures (should be change-controlled)
+level: critical

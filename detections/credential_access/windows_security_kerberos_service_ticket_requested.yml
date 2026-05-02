@@ -1,0 +1,20 @@
+title: Windows Security - Kerberos Service Ticket Requested
+id: win-sec-4769-001
+status: stable
+description: Detects Kerberos service ticket requests (Event ID 4769). Kerberoasting requests TGS tickets for service accounts — high volume RC4-encrypted (0x17) ticket requests from a single account is the primary indicator. Baseline rule.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1558.003
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4769
+  condition: selection
+falsepositives:
+  - All normal Kerberos service authentication (very high volume in domain environments)
+level: low

@@ -1,0 +1,19 @@
+title: Web Recon - Spring Boot Actuator Endpoint Probe
+id: web-actuator-001
+status: stable
+description: Detects probes targeting Spring Boot Actuator endpoints which can expose env vars, heap dumps, and internal app state.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.discovery
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    path|startswith: "/actuator"
+  condition: selection
+falsepositives:
+  - Internal health monitoring hitting /actuator/health (suppress that specific path)
+level: high

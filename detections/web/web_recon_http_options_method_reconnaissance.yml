@@ -1,0 +1,19 @@
+title: Web Recon - HTTP OPTIONS Method Reconnaissance
+id: web-http-options-001
+status: stable
+description: Detects HTTP OPTIONS requests used to enumerate allowed methods on a server. Attackers use OPTIONS responses to identify PUT/DELETE/PATCH capabilities before attempting file upload or destructive operations.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    method: "OPTIONS"
+  condition: selection
+falsepositives:
+  - CORS preflight requests from legitimate browser applications (very high volume expected)
+level: low

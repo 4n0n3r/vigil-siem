@@ -1,0 +1,23 @@
+title: Linux - GDB or Debugger Attached to Running Process
+id: linux-gdb-attach-001
+status: stable
+description: Detects GDB and debugging tool execution. Attackers attach debuggers to running processes (sshd, nginx, sudo) to patch authentication checks in memory, extract credentials, or inject shellcode without modifying files.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1003
+  - attack.privilege_escalation
+logsource:
+  product: linux
+detection:
+  sel_gdb:
+    source|startswith: "journald:"
+    _COMM: "gdb"
+  sel_lldb:
+    source|startswith: "journald:"
+    _COMM: "lldb"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized debugging by developers on development systems (must not occur in production)
+level: medium

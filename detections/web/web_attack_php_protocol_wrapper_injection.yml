@@ -1,0 +1,31 @@
+title: Web Attack - PHP Protocol Wrapper Injection
+id: web-php-wrapper-001
+status: stable
+description: Detects PHP protocol wrapper abuse (php://input, php://filter, expect://, data://) commonly used for LFI-to-RCE escalation and source code disclosure via base64 encoding.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_input:
+    source|startswith: "web:"
+    query|contains: "php://input"
+  sel_filter:
+    source|startswith: "web:"
+    query|contains: "php://filter"
+  sel_expect:
+    source|startswith: "web:"
+    query|contains: "expect://"
+  sel_data:
+    source|startswith: "web:"
+    query|contains: "data://text/plain"
+  sel_path:
+    source|startswith: "web:"
+    path|contains: "php://"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected on non-PHP applications; PHP apps should sanitize these
+level: high

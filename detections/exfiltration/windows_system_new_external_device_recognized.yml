@@ -1,0 +1,22 @@
+title: Windows System - New External Device Recognized
+id: win-sys-6416-001
+status: stable
+description: Detects recognition of a new external device (Event ID 6416). USB drives and other removable media are used for data exfiltration and BadUSB-style HID attacks. Baseline rule for removable media inventory.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.exfiltration
+  - attack.t1052.001
+  - attack.initial_access
+  - attack.t1091
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 6416
+  condition: selection
+falsepositives:
+  - Authorized use of USB devices (should be controlled via device policy)
+level: low

@@ -1,0 +1,20 @@
+title: Windows Security - Local User Account Created
+id: win-sec-4720-001
+status: stable
+description: Detects new user account creation (Event ID 4720). Attackers create persistent accounts for backdoor access after initial compromise. All account creation should be reviewed.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4720
+  condition: selection
+falsepositives:
+  - Authorized IT provisioning workflows (expected but should match a change ticket)
+level: high

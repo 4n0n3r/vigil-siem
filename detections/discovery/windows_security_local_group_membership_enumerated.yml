@@ -1,0 +1,20 @@
+title: Windows Security - Local Group Membership Enumerated
+id: win-sec-4798-001
+status: stable
+description: Detects local group membership enumeration (Event ID 4798). Fired by net user /domain, Get-LocalGroupMember, and reconnaissance tools like BloodHound during initial access triage.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.discovery
+  - attack.t1069.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4798
+  condition: selection
+falsepositives:
+  - Legitimate IT scripts querying group membership, helpdesk tooling
+level: medium

@@ -1,0 +1,25 @@
+title: Linux - Outbound Email Relay via Postfix or Sendmail
+id: linux-mail-relay-001
+status: stable
+description: Detects outbound mail relay activity. Compromised servers are frequently weaponized as spam relay points. Baseline expected mail volume and alert on anomalies.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.impact
+  - attack.t1496
+  - attack.command_and_control
+logsource:
+  product: linux
+detection:
+  sel_postfix:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "postfix/smtp"
+    MESSAGE|contains: "status=sent"
+  sel_sendmail:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sendmail"
+    MESSAGE|contains: "relay="
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate application email (notifications, alerts, reports) — high FP rate, use for baseline
+level: low

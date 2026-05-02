@@ -1,0 +1,38 @@
+title: Linux - Download Tool Piped to Shell
+id: linux-download-pipe-shell-001
+status: stable
+description: Detects curl or wget output piped directly to bash or sh for one-liner remote code execution. Near-zero false positive rate outside of setup scripts and exploitation.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.execution
+  - attack.t1059.004
+  - attack.command_and_control
+  - attack.t1105
+logsource:
+  product: linux
+detection:
+  curl_bash:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "curl"
+      - "| bash"
+  curl_sh:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "curl"
+      - "| sh"
+  wget_bash:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "wget"
+      - "| bash"
+  wget_sh:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "wget"
+      - "| sh"
+  condition: 1 of curl_* or 1 of wget_*
+falsepositives:
+  - Bootstrap/install scripts (expected in controlled provisioning — suppress known installer patterns)
+level: critical

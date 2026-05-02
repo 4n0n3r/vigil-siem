@@ -1,0 +1,24 @@
+title: Linux - Crontab Installed or Modified
+id: linux-crontab-modified-001
+status: stable
+description: Detects crontab file installation or modification events logged by the crontab utility. Attackers use cron persistence to survive reboots and maintain access.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1053.003
+logsource:
+  product: linux
+detection:
+  sel_install:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "crontab"
+    MESSAGE|contains: "installing new crontab"
+  sel_remove:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "crontab"
+    MESSAGE|contains: "removing crontab"
+  condition: 1 of sel_*
+falsepositives:
+  - Automated provisioning tools (Ansible, Chef) managing scheduled tasks
+level: medium

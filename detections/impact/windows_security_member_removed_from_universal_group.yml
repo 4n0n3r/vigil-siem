@@ -1,0 +1,20 @@
+title: Windows Security - Member Removed from Universal Group
+id: win-sec-4757-001
+status: stable
+description: Detects member removal from a universal security group (Event ID 4757). May indicate an attacker removing legitimate members from critical groups to deny access (impact), or cleaning up after unauthorized group manipulation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1531
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4757
+  condition: selection
+falsepositives:
+  - Authorized IT group membership management
+level: medium

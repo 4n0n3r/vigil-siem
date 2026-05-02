@@ -1,0 +1,23 @@
+title: Linux - SSH Agent Forwarding Accepted
+id: linux-ssh-agent-forward-001
+status: stable
+description: Detects SSH agent forwarding sessions. When an attacker controls a host with agent forwarding enabled, they can use the forwarded agent credentials to authenticate to additional hosts the victim can access — enabling silent lateral movement.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.lateral_movement
+  - attack.t1021.004
+  - attack.credential_access
+  - attack.t1552.004
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains: "agent forwarding"
+  condition: selection
+falsepositives:
+  - Authorized use of SSH agent forwarding by administrators for multi-hop access
+level: medium

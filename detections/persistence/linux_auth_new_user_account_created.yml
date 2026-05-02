@@ -1,0 +1,20 @@
+title: Linux Auth - New User Account Created
+id: linux-new-user-001
+status: stable
+description: Detects creation of new user accounts. Attackers create persistent accounts for backdoor access after initial compromise.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.persistence
+  - attack.t1136.001
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    MESSAGE|contains: "new user:"
+  condition: selection
+falsepositives:
+  - Legitimate system administration or automated provisioning
+level: high

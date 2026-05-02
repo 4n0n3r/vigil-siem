@@ -1,0 +1,25 @@
+title: Linux - SSH Config File Modified
+id: linux-sshd-config-modified-001
+status: stable
+description: Detects references to sshd_config modification in journald. Attackers modify SSH config to enable root login, disable authentication, add authorized key paths, or enable port forwarding.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1098.004
+  - attack.defense_evasion
+logsource:
+  product: linux
+  service: auth
+detection:
+  sel_reloaded:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains: "Received SIGHUP; restarting"
+  sel_config:
+    source|startswith: "journald:"
+    MESSAGE|contains: "sshd_config"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized SSH hardening, configuration management tools (Ansible, Chef)
+level: high

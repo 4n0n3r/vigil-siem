@@ -1,0 +1,28 @@
+title: Linux - New Package Installed via APT or RPM
+id: linux-pkg-install-001
+status: stable
+description: Detects package installation events via dpkg/apt (Debian/Ubuntu) or rpm/yum/dnf (RHEL/CentOS). Attackers install tools (nc, nmap, gcc, python) post-compromise to enable further operations. Useful for inventory baselining.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.execution
+  - attack.t1072
+logsource:
+  product: linux
+detection:
+  sel_dpkg:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "dpkg"
+    MESSAGE|contains: "install"
+  sel_apt:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "apt"
+    MESSAGE|contains: "install"
+  sel_rpm:
+    source|startswith: "journald:"
+    _COMM: "rpm"
+    MESSAGE|contains: "install"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized package management (high FP rate — use as inventory baseline, not incident trigger)
+level: low

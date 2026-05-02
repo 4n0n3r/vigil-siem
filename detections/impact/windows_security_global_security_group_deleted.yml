@@ -1,0 +1,20 @@
+title: Windows Security - Global Security Group Deleted
+id: win-sec-4730-001
+status: stable
+description: Detects deletion of a security-enabled global group (Event ID 4730). Deleting legitimate security groups disrupts access controls and may be a precursor to creating replacement shadow groups for attacker-controlled access.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1531
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4730
+  condition: selection
+falsepositives:
+  - Authorized IT group lifecycle management
+level: high

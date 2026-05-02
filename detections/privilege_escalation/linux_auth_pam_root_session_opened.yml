@@ -1,0 +1,20 @@
+title: Linux Auth - PAM Root Session Opened
+id: linux-pam-root-session-001
+status: stable
+description: Detects PAM session events for the root account. Any direct root login outside of expected maintenance windows warrants investigation.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.privilege_escalation
+  - attack.t1078.003
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    MESSAGE|contains: "session opened for user root"
+  condition: selection
+falsepositives:
+  - Scheduled maintenance tasks running as root (suppress cron-spawned sessions)
+level: high

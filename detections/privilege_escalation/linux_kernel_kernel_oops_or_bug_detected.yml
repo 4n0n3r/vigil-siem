@@ -1,0 +1,27 @@
+title: Linux Kernel - Kernel Oops or BUG Detected
+id: linux-kernel-oops-001
+status: stable
+description: Detects kernel Oops and BUG events logged to journald. May indicate kernel exploit attempts (privilege escalation via kernel vulnerability), a rootkit destabilizing the kernel, or a memory corruption bug triggered by a malicious input.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.privilege_escalation
+  - attack.t1068
+logsource:
+  product: linux
+detection:
+  sel_bug:
+    source|startswith: "journald:"
+    MESSAGE|contains: "kernel BUG at"
+  sel_oops:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "Oops:"
+      - "RIP:"
+  sel_panic:
+    source|startswith: "journald:"
+    MESSAGE|contains: "Kernel panic"
+  condition: 1 of sel_*
+falsepositives:
+  - Hardware faults, driver bugs, RAM errors (correlate with SMART data and hardware logs)
+level: high

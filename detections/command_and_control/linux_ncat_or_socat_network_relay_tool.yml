@@ -1,0 +1,28 @@
+title: Linux - Ncat or Socat Network Relay Tool
+id: linux-socat-relay-001
+status: stable
+description: Detects socat and ncat execution. These tools create network relays, port forwards, and listener shells more flexibly than nc. Socat in particular supports SSL-encrypted shells and complex protocol bridging for C2 evasion.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.command_and_control
+  - attack.t1071
+  - attack.execution
+  - attack.t1059.004
+logsource:
+  product: linux
+detection:
+  sel_socat:
+    source|startswith: "journald:"
+    _COMM: "socat"
+  sel_ncat:
+    source|startswith: "journald:"
+    _COMM: "ncat"
+  sel_socat_msg:
+    source|startswith: "journald:"
+    MESSAGE|contains: "socat"
+    MESSAGE|contains: "EXEC:"
+  condition: 1 of sel_*
+falsepositives:
+  - Network debugging by authorized administrators (rare in production)
+level: high

@@ -1,0 +1,20 @@
+title: Windows Security - User Account Disabled
+id: win-sec-4725-001
+status: stable
+description: Detects user account disable events (Event ID 4725). Attackers may disable accounts to lock out legitimate users after compromise, or this may represent unauthorized administrative action.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.impact
+  - attack.t1531
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4725
+  condition: selection
+falsepositives:
+  - Authorized IT account lifecycle management (offboarding workflows)
+level: medium

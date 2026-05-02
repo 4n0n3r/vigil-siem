@@ -1,0 +1,32 @@
+title: Linux - SSL Certificate Verification Bypassed in Download
+id: linux-ssl-bypass-001
+status: stable
+description: Detects curl or wget invocations with certificate verification disabled. Attackers bypass TLS verification to download payloads from attacker-controlled servers using self-signed certificates without triggering trust errors.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.command_and_control
+  - attack.t1105
+  - attack.defense_evasion
+logsource:
+  product: linux
+detection:
+  sel_curl_k:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "curl"
+      - " -k "
+  sel_curl_insecure:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "curl"
+      - "--insecure"
+  sel_wget_noverify:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "wget"
+      - "--no-check-certificate"
+  condition: 1 of sel_*
+falsepositives:
+  - Internal tools accessing self-signed internal endpoints (should use proper PKI)
+level: medium

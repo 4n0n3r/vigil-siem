@@ -1,0 +1,29 @@
+title: Web Recon - CMS Install or Setup Page Access
+id: web-cms-install-001
+status: stable
+description: Detects access to CMS installation and setup scripts left accessible after deployment. Exposed install pages allow unauthenticated database reconfiguration and admin account creation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_install:
+    source|startswith: "web:"
+    path|contains: "/install.php"
+  sel_setup:
+    source|startswith: "web:"
+    path|contains: "/setup.php"
+  sel_wp_install:
+    source|startswith: "web:"
+    path: "/wp-admin/install.php"
+  sel_setup_dir:
+    source|startswith: "web:"
+    path|startswith: "/setup/"
+    path|contains: "install"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected post-deployment — install scripts should be removed or protected
+level: high

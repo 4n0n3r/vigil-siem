@@ -1,0 +1,31 @@
+title: Web Attack - Web Shell Extension Directly Accessed
+id: web-webshell-ext-001
+status: stable
+description: Detects direct HTTP access to server-side script file extensions that indicate potential web shell access. A 200 response to .php, .asp, .jsp files in non-standard paths often indicates a dropped web shell.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1505.003
+  - attack.execution
+logsource:
+  product: web
+detection:
+  sel_src:
+    source|startswith: "web:"
+  sel_ext:
+    extension:
+      - "php"
+      - "asp"
+      - "aspx"
+      - "jsp"
+      - "jspx"
+      - "cfm"
+      - "phtml"
+      - "shtml"
+  sel_error:
+    is_sensitive_path: true
+  condition: sel_src and sel_ext and sel_error
+falsepositives:
+  - Legitimate PHP/ASP/JSP application pages (this rule requires is_sensitive_path=true to reduce noise)
+level: high

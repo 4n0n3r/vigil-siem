@@ -1,0 +1,21 @@
+title: Windows Security - Scheduled Task Deleted
+id: win-sec-4699-001
+status: stable
+description: Detects scheduled task deletion (Event ID 4699). Attackers delete scheduled tasks after execution to remove evidence of their persistence mechanism or payload delivery.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1070
+  - attack.t1053.005
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4699
+  condition: selection
+falsepositives:
+  - Legitimate task lifecycle management by administrators or software uninstall
+level: medium

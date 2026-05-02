@@ -1,0 +1,20 @@
+title: Windows Security - Security Group Membership Enumerated
+id: win-sec-4799-001
+status: stable
+description: Detects security group membership enumeration (Event ID 4799). Fired by BloodHound, net localgroup, and PowerView during AD reconnaissance. High frequency from a single host is a strong lateral movement precursor indicator.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.discovery
+  - attack.t1069.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4799
+  condition: selection
+falsepositives:
+  - Legitimate IT scripts querying group membership, identity management systems
+level: medium

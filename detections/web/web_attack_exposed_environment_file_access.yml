@@ -1,0 +1,22 @@
+title: Web Attack - Exposed Environment File Access
+id: web-dotenv-access-001
+status: stable
+description: Detects direct HTTP access to .env files which commonly contain API keys, database credentials, and secrets. Exposed .env files are a top misconfiguration finding.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1552.001
+logsource:
+  product: web
+detection:
+  sel_root:
+    source|startswith: "web:"
+    path: "/.env"
+  sel_prefixed:
+    source|startswith: "web:"
+    path|re: "^/\.env\."
+  condition: sel_root or sel_prefixed
+falsepositives:
+  - None expected — .env files must never be web-accessible
+level: high

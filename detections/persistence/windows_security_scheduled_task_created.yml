@@ -1,0 +1,21 @@
+title: Windows Security - Scheduled Task Created
+id: win-sec-4698-001
+status: stable
+description: Detects scheduled task creation (Event ID 4698). Attackers use scheduled tasks for persistence, privilege escalation, and execution of payloads at reboot or on a timer.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1053.005
+  - attack.execution
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4698
+  condition: selection
+falsepositives:
+  - Legitimate software scheduling tasks during installation or updates
+level: high

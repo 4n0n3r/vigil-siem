@@ -1,0 +1,22 @@
+title: Linux - Systemd Service Unit Created or Enabled
+id: linux-systemd-service-created-001
+status: stable
+description: Detects systemd service unit creation via the "Created symlink" log message emitted when a service is enabled. Attackers install systemd services for persistent execution across reboots.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1543.002
+logsource:
+  product: linux
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd"
+    MESSAGE|contains|all:
+      - "Created symlink"
+      - ".service"
+  condition: selection
+falsepositives:
+  - Legitimate package installation creating new service units
+level: medium

@@ -1,0 +1,21 @@
+title: Web Attack - HTTP DELETE Method on Non-API Path
+id: web-http-delete-001
+status: stable
+description: Detects HTTP DELETE requests. Misconfigured WebDAV or REST endpoints accepting DELETE without authentication allow attackers to remove files, wipe content, or trigger application state corruption.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1485
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    method: "DELETE"
+  condition: selection
+falsepositives:
+  - Legitimate REST APIs using DELETE for resource removal (suppress known API paths)
+level: high

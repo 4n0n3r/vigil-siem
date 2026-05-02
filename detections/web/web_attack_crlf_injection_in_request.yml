@@ -1,0 +1,22 @@
+title: Web Attack - CRLF Injection in Request
+id: web-crlf-001
+status: stable
+description: Detects CRLF injection attempts in HTTP requests, enabling HTTP response splitting, log injection, or header manipulation.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.defense_evasion
+  - attack.t1027
+logsource:
+  product: web
+detection:
+  src:
+    source|startswith: "web:"
+  crlf_path:
+    path|re: "%0[dD]|%0[aA]"
+  crlf_rl:
+    request_line|re: "%0[dD]|%0[aA]"
+  condition: src and (crlf_path or crlf_rl)
+falsepositives:
+  - Malformed legitimate requests (very rare)
+level: high

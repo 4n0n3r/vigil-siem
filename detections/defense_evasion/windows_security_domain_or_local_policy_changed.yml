@@ -1,0 +1,20 @@
+title: Windows Security - Domain or Local Policy Changed
+id: win-sec-4739-001
+status: stable
+description: Detects domain or local security policy modification (Event ID 4739). Attackers modify password policy, lockout thresholds, and audit settings to weaken defenses and hide activity.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4739
+  condition: selection
+falsepositives:
+  - Authorized Group Policy changes by domain administrators
+level: high

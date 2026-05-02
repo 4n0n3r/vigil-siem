@@ -1,0 +1,21 @@
+title: Linux SSH - Maximum Authentication Attempts Exceeded
+id: linux-ssh-maxauth-001
+status: stable
+description: Detects when SSH disconnects a client for exceeding max auth attempts — a strong indicator of automated brute-force tooling.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "sshd"
+    MESSAGE|contains: "Too many authentication failures"
+  condition: selection
+falsepositives:
+  - Misconfigured SSH clients retrying too many keys
+level: high

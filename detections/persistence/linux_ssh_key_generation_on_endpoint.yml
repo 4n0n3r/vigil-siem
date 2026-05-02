@@ -1,0 +1,23 @@
+title: Linux - SSH Key Generation on Endpoint
+id: linux-ssh-keygen-001
+status: stable
+description: Detects ssh-keygen execution via the process comm field. Attackers generate SSH key pairs to add to authorized_keys files for persistent passwordless access after gaining initial foothold.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098.004
+logsource:
+  product: linux
+detection:
+  sel_comm:
+    source|startswith: "journald:"
+    _COMM: "ssh-keygen"
+  sel_msg:
+    source|startswith: "journald:"
+    MESSAGE|contains: "ssh-keygen"
+    MESSAGE|contains: "-t "
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized users setting up SSH key authentication, automated provisioning
+level: medium

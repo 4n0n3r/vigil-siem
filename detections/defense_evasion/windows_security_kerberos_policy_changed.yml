@@ -1,0 +1,22 @@
+title: Windows Security - Kerberos Policy Changed
+id: win-sec-4713-001
+status: stable
+description: Detects Kerberos policy modification (Event ID 4713). Changes to ticket lifetime or delegation settings can enable Kerberos-based attacks including golden ticket persistence or delegation abuse.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1562.001
+  - attack.credential_access
+  - attack.t1558
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4713
+  condition: selection
+falsepositives:
+  - Authorized domain policy changes by domain administrators
+level: high

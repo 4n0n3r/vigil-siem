@@ -8,11 +8,15 @@ every endpoint returns 503 with error_code DB_NOT_CONNECTED.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
+import yaml
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 
 from app.db import postgres
 from app.models import (
@@ -23,6 +27,12 @@ from app.models import (
     ErrorResponse,
 )
 from app.sigma import loader
+
+# detections/ dir is mounted at /app/detections inside the container.
+# Fallback to a path relative to this file for local dev.
+_DETECTIONS_ROOT = Path(os.getenv("DETECTIONS_DIR", "/app/detections"))
+if not _DETECTIONS_ROOT.exists():
+    _DETECTIONS_ROOT = Path(__file__).parent.parent.parent.parent / "detections"
 
 logger = logging.getLogger(__name__)
 
@@ -239,3 +249,139 @@ async def delete_rule(rule_id: str):
 
     await loader.invalidate_cache()
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# POST /detections/seed  — bulk-load rules from the detections/ filesystem dir
+# ---------------------------------------------------------------------------
+
+_SEVERITY_MAP = {
+    "informational": "info", "low": "low", "medium": "medium",
+    "high": "high", "critical": "critical",
+}
+
+_TACTIC_TAGS = {
+    "initial_access", "credential_access", "persistence", "execution",
+    "defense_evasion", "privilege_escalation", "lateral_movement",
+    "discovery", "command_and_control", "exfiltration", "impact",
+    "reconnaissance", "collection", "resource_development",
+}
+
+
+class SeedResponse(BaseModel):
+    created: int
+    skipped: int
+    errors: int
+    error_details: list[str]
+
+
+def _parse_rule_file(path: Path) -> dict | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+        doc = yaml.safe_load(text)
+    except Exception:
+        return None
+    if not isinstance(doc, dict):
+        return None
+
+    name = doc.get("title") or path.stem.replace("_", " ").title()
+    raw_level = (doc.get("level") or "medium").lower()
+    severity = _SEVERITY_MAP.get(raw_level, "medium")
+
+    tactic = path.parent.name
+    for tag in (doc.get("tags") or []):
+        t = str(tag).lower()
+        if t.startswith("attack.") and not t.startswith("attack.t"):
+            candidate = t.replace("attack.", "")
+            if candidate in _TACTIC_TAGS:
+                tactic = candidate
+                break
+
+    return {
+        "name": name,
+        "description": doc.get("description", ""),
+        "severity": severity,
+        "mitre_tactic": tactic,
+        "sigma_yaml": text,
+        "enabled": True,
+    }
+
+
+@router.post("/detections/seed", response_model=SeedResponse, status_code=200)
+async def seed_rules(
+    category: Optional[str] = Query(default=None, description="Tactic directory name, e.g. credential_access"),
+    dry_run: bool = Query(default=False),
+):
+    """Load detection rules from the detections/ filesystem directory into the DB.
+
+    Pass ``category`` to restrict to a single tactic subdirectory.
+    Pass ``dry_run=true`` to preview without writing.
+    """
+    pool = postgres.get_pool()
+    if pool is None:
+        return _db_unavailable()
+
+    if not _DETECTIONS_ROOT.exists():
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponse(
+                error_code="DETECTIONS_DIR_NOT_FOUND",
+                message=f"Detections directory not found: {_DETECTIONS_ROOT}",
+                hint="Mount the detections/ dir into the container or set DETECTIONS_DIR.",
+            ).model_dump(),
+        )
+
+    if category:
+        search_dirs = [_DETECTIONS_ROOT / category]
+    else:
+        search_dirs = [p for p in _DETECTIONS_ROOT.iterdir() if p.is_dir()]
+
+    yaml_files: list[Path] = []
+    for d in search_dirs:
+        if d.is_dir():
+            yaml_files.extend(sorted(d.glob("*.yml")))
+
+    created = skipped = errors = 0
+    error_details: list[str] = []
+
+    async with pool.acquire() as conn:
+        existing_names: set[str] = {
+            row["name"] for row in await conn.fetch("SELECT name FROM detection_rules")
+        }
+
+        for path in yaml_files:
+            rule = _parse_rule_file(path)
+            if rule is None:
+                errors += 1
+                error_details.append(f"parse error: {path.name}")
+                continue
+
+            if rule["name"] in existing_names:
+                skipped += 1
+                continue
+
+            if dry_run:
+                created += 1
+                continue
+
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO detection_rules
+                        (name, description, severity, mitre_tactic, sigma_yaml, enabled)
+                    VALUES ($1,$2,$3,$4,$5,$6)
+                    ON CONFLICT (name) DO NOTHING
+                    """,
+                    rule["name"], rule["description"], rule["severity"],
+                    rule["mitre_tactic"], rule["sigma_yaml"], rule["enabled"],
+                )
+                existing_names.add(rule["name"])
+                created += 1
+            except Exception as exc:
+                errors += 1
+                error_details.append(f"{path.name}: {exc}")
+
+    if not dry_run and created:
+        await loader.invalidate_cache()
+
+    return SeedResponse(created=created, skipped=skipped, errors=errors, error_details=error_details)

@@ -178,5 +178,10 @@ may already cover the pattern.
 
 | rule_id | rule_name | common FP pattern | suppression_exists | date_noted |
 |---|---|---|---|---|
+| 268a9ffa-e828-4221-b66f-7df155cccedf | Windows PowerShell - Script Block Logging Triggered | Vigil CLI's PowerShell AST parser on UX200d generates event_id 4104 on every invocation (30 alerts in one day) | no | 2026-04-29 |
+| b92c34dc-5e24-46ad-b294-ad191670dd30 | Windows Security - Security Group Membership Enumerated | taskhostw.exe, VSSVC.exe, SearchIndexer.exe, and svchost.exe all query Administrators group membership constantly (system behavior). Rule filter updated 2026-04-29 to exclude all four via filter_system_processes. New system processes may need adding in future runs. | no | 2026-04-29 |
+| e0fff530-d525-4bac-b90d-843f2e02d85c | Windows Security - Local Group Membership Enumerated | svchost.exe continuously enumerates local group membership (event 4798) during token generation and service operations. Rule disabled 2026-04-29 — too noisy to filter; any future re-enable requires tight CallerProcessName allowlist. | n/a (disabled) | 2026-04-29 |
+| 3b1ab9cc-cb69-4de4-aa15-c4a30add1f00 | Linux - DNS Query for Tor or Dark Web Domain | YAML duplicate-key bug in sel_msg_onion — two MESSAGE|contains entries collapsed to only NXDOMAIN check, firing on certbot cert renewal failures. Fixed 2026-04-29 to use MESSAGE|contains|all: [.onion, NXDOMAIN]. Verify no regressions if re-deployed. | no | 2026-04-29 |
+| 0d2d6b07-d263-4117-8206-9a4b652ec151 | Linux - Passwd or Shadow File Enumeration via Cat | Sigma |all bug fires on "cat" substring in sshd "authentication" messages. Systemic: any Linux rule using MESSAGE\|contains\|all with short tokens (cat, sh, id, dd) is vulnerable. Workaround: add filter_sshd to all affected rules. | no | 2026-04-29 |
 
 *Populated by the daily tuning run. A rule earns a row here after producing 3+ FPs across runs.*

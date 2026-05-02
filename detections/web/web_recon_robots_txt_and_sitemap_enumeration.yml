@@ -1,0 +1,25 @@
+title: Web Recon - robots.txt and Sitemap Enumeration
+id: web-robots-sitemap-001
+status: stable
+description: Detects access to robots.txt and sitemap files, which enumerate hidden paths, admin URLs, and directory structures that web crawlers should not index. Commonly the first step in automated web reconnaissance.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.reconnaissance
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    path:
+      - "/robots.txt"
+      - "/sitemap.xml"
+      - "/sitemap_index.xml"
+      - "/.well-known/security.txt"
+      - "/crossdomain.xml"
+      - "/clientaccesspolicy.xml"
+  condition: selection
+falsepositives:
+  - Legitimate search engine crawlers (check ua_category — bots are expected here)
+level: low

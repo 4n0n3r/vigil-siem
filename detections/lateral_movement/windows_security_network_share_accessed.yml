@@ -1,0 +1,20 @@
+title: Windows Security - Network Share Accessed
+id: win-sec-5140-001
+status: stable
+description: Detects network share access events (Event ID 5140). Activity baseline rule — access to admin shares (C$, ADMIN$, IPC$) from unexpected sources indicates lateral movement or credential testing.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.lateral_movement
+  - attack.t1021.002
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 5140
+  condition: selection
+falsepositives:
+  - All normal network file share access (high volume expected in corporate environments)
+level: low

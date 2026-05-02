@@ -1,0 +1,31 @@
+title: Web Recon - CI/CD Pipeline Configuration File Probe
+id: web-cicd-file-001
+status: stable
+description: Detects HTTP access to CI/CD pipeline configuration files that commonly contain secrets, registry credentials, deployment keys, and cloud access tokens in plaintext.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.credential_access
+  - attack.t1552.001
+logsource:
+  product: web
+detection:
+  sel_gitlab:
+    source|startswith: "web:"
+    path|contains: ".gitlab-ci.yml"
+  sel_github:
+    source|startswith: "web:"
+    path|contains: ".github/workflows"
+  sel_jenkins:
+    source|startswith: "web:"
+    path|contains: "Jenkinsfile"
+  sel_circle:
+    source|startswith: "web:"
+    path|contains: ".circleci/config.yml"
+  sel_travis:
+    source|startswith: "web:"
+    path|contains: ".travis.yml"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — pipeline files must not be web-accessible
+level: high

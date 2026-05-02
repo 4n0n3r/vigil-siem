@@ -1,0 +1,22 @@
+title: Web Recon - phpMyAdmin Probe
+id: web-phpmyadmin-001
+status: stable
+description: Detects probes targeting phpMyAdmin. Exposure provides a path to full database compromise.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.discovery
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  src:
+    source|startswith: "web:"
+  phpmyadmin:
+    path|contains: "/phpmyadmin"
+  pma:
+    path|contains: "/pma"
+  condition: src and (phpmyadmin or pma)
+falsepositives:
+  - Intentional database admin interface (should be IP-restricted)
+level: high

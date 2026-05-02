@@ -1,0 +1,28 @@
+title: Web Recon - Exposed Webpack or NPM Package File
+id: web-package-file-001
+status: stable
+description: Detects access to npm package manifests and webpack bundles that expose dependency versions, internal package names, and script commands. Used to fingerprint vulnerable library versions for targeted exploitation.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_package:
+    source|startswith: "web:"
+    path|contains: "/package.json"
+  sel_lock:
+    source|startswith: "web:"
+    path|contains: "/package-lock.json"
+  sel_yarn:
+    source|startswith: "web:"
+    path|contains: "/yarn.lock"
+  sel_webpack:
+    source|startswith: "web:"
+    path|re: "/webpack\\.config\\.(js|ts)$"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — npm manifest files must not be web-accessible
+level: medium

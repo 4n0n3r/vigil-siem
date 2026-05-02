@@ -1,0 +1,20 @@
+title: Windows Security - Universal Security Group Deleted
+id: win-sec-4758-001
+status: stable
+description: Detects deletion of a security-enabled universal group (Event ID 4758). Deleting universal security groups affects cross-domain access control — may indicate attacker disrupting defenses or cleaning up unauthorized groups.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.impact
+  - attack.t1531
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4758
+  condition: selection
+falsepositives:
+  - Authorized IT group lifecycle management
+level: high

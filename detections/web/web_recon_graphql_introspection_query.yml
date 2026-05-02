@@ -1,0 +1,26 @@
+title: Web Recon - GraphQL Introspection Query
+id: web-graphql-introspect-001
+status: stable
+description: Detects GraphQL introspection queries used to enumerate the full API schema, types, queries, and mutations. Attackers use schema introspection as the first step in mapping an undocumented API attack surface.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  sel_schema:
+    source|startswith: "web:"
+    query|contains: "__schema"
+  sel_type:
+    source|startswith: "web:"
+    query|contains: "__type"
+  sel_path:
+    source|startswith: "web:"
+    path|contains: "/graphql"
+    query|contains: "introspection"
+  condition: 1 of sel_*
+falsepositives:
+  - Development tools and GraphQL IDEs (GraphiQL, Apollo Studio) — suppress by source IP
+level: medium

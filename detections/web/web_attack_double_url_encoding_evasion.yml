@@ -1,0 +1,22 @@
+title: Web Attack - Double URL Encoding Evasion
+id: web-double-encode-001
+status: stable
+description: Detects double URL encoding in path or query (%252e = encoded %2e = encoded dot). Used to bypass WAF and path normalization controls that decode only once before applying security checks.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1027
+logsource:
+  product: web
+detection:
+  sel_path:
+    source|startswith: "web:"
+    path|re: "%25(2e|2f|5c|3c|3e|27|22)"
+  sel_query:
+    source|startswith: "web:"
+    query|re: "%25(2e|2f|5c|3c|3e|27|22)"
+  condition: 1 of sel_*
+falsepositives:
+  - Rare legitimate use cases where double encoding is required by the application protocol
+level: medium

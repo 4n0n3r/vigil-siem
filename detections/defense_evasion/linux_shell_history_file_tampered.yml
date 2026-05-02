@@ -1,0 +1,28 @@
+title: Linux - Shell History File Tampered
+id: linux-history-tamper-001
+status: stable
+description: Detects shell history suppression or deletion attempts logged in journald. Attackers unset HISTFILE, set HISTSIZE=0, or run history -c to erase command history and cover their tracks.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1070.003
+logsource:
+  product: linux
+detection:
+  sel_unset:
+    source|startswith: "journald:"
+    MESSAGE|contains: "unset HISTFILE"
+  sel_histsize:
+    source|startswith: "journald:"
+    MESSAGE|contains: "HISTSIZE=0"
+  sel_histfile_dev:
+    source|startswith: "journald:"
+    MESSAGE|contains: "HISTFILE=/dev/null"
+  sel_history_c:
+    source|startswith: "journald:"
+    MESSAGE|contains: "history -c"
+  condition: 1 of sel_*
+falsepositives:
+  - Automated scripts deliberately suppressing history for security (should be documented)
+level: medium

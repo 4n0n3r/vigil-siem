@@ -1,0 +1,30 @@
+title: Linux - Container Namespace Escape Attempt
+id: linux-container-escape-001
+status: stable
+description: Detects container escape techniques in journald — nsenter (entering host namespaces), unshare with PID namespace, and privileged proc mounts. Successful container escape grants full host access.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.privilege_escalation
+  - attack.t1611
+  - attack.execution
+logsource:
+  product: linux
+detection:
+  sel_nsenter:
+    source|startswith: "journald:"
+    MESSAGE|contains: "nsenter"
+  sel_unshare:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "unshare"
+      - "--pid"
+  sel_mount_proc:
+    source|startswith: "journald:"
+    MESSAGE|contains|all:
+      - "mount"
+      - "/proc"
+  condition: 1 of sel_*
+falsepositives:
+  - Container runtime operations, Kubernetes node-level tooling (validate against known orchestration IPs)
+level: critical

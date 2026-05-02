@@ -1,0 +1,22 @@
+title: Windows Security - Computer Account Created
+id: win-sec-4741-001
+status: stable
+description: Detects computer account creation (Event ID 4741). Attackers with ms-DS-MachineAccountQuota rights create rogue computer accounts for Kerberos delegation abuse (RBCD attacks) and persistence via machine TGTs.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+  - attack.credential_access
+  - attack.t1558
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4741
+  condition: selection
+falsepositives:
+  - Authorized workstation and server provisioning in domain environments
+level: medium

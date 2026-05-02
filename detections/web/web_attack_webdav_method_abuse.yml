@@ -1,0 +1,26 @@
+title: Web Attack - WebDAV Method Abuse
+id: web-webdav-001
+status: stable
+description: Detects WebDAV-specific HTTP methods (PROPFIND, MKCOL, MOVE, COPY, LOCK). Attackers abuse WebDAV to enumerate directory structures, upload files, and move web shells on misconfigured servers.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.persistence
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    method:
+      - "PROPFIND"
+      - "MKCOL"
+      - "MOVE"
+      - "COPY"
+      - "LOCK"
+      - "UNLOCK"
+  condition: selection
+falsepositives:
+  - Legitimate WebDAV clients (SharePoint, SVN over WebDAV) — suppress known client IPs
+level: medium

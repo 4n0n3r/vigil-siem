@@ -1,0 +1,20 @@
+title: Web Attack - Open Redirect via 3xx Response
+id: web-open-redirect-001
+status: stable
+description: Detects confirmed open redirect — external URL in redirect parameter combined with a 3xx response. Used for phishing, credential theft, and OAuth token hijacking via redirect_uri abuse.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.initial_access
+  - attack.t1566.002
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    query|re: "(redirect|return|next|r|url|to|goto|link|jump|redir|target|location)=https?://"
+    status_class: "3xx"
+  condition: selection
+falsepositives:
+  - Legitimate OAuth redirect flows using absolute URLs (suppress known application paths)
+level: medium

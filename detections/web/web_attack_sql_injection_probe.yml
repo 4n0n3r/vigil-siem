@@ -1,0 +1,19 @@
+title: Web Attack - SQL Injection Probe
+id: web-sqli-probe-001
+status: stable
+description: Detects SQL injection patterns in path or query string. Pre-computed has_sql_chars flag covers UNION, SELECT, DROP, boolean injections, and SQL comment sequences.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    has_sql_chars: true
+  condition: selection
+falsepositives:
+  - Legitimate slugs containing SQL keywords (suppress specific application paths if needed)
+level: high

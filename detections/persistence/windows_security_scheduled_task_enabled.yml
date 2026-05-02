@@ -1,0 +1,20 @@
+title: Windows Security - Scheduled Task Enabled
+id: win-sec-4700-001
+status: stable
+description: Detects a previously disabled scheduled task being enabled (Event ID 4700). Attackers enable dormant tasks (or tasks created while disabled) to activate persistence payloads.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1053.005
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4700
+  condition: selection
+falsepositives:
+  - Legitimate task re-enabling after maintenance window
+level: medium

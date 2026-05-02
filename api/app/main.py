@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -41,13 +42,33 @@ logger = logging.getLogger(__name__)
 # Lifespan
 # ---------------------------------------------------------------------------
 
+_CACHE_REFRESH_INTERVAL = 300  # seconds — self-heals stale caches across workers
+
+
+async def _periodic_rule_refresh() -> None:
+    """Reload rule cache from DB every CACHE_REFRESH_INTERVAL seconds.
+
+    Ensures each worker process stays current even if the on-demand
+    invalidate_cache() call from a PATCH/DELETE didn't reach this worker.
+    """
+    while True:
+        await asyncio.sleep(_CACHE_REFRESH_INTERVAL)
+        await loader.load_rules_from_db()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: connect to databases and warm the rule cache."""
+    """Startup: connect to databases, warm the rule cache, start background refresh."""
     await clickhouse.init_clickhouse()
     await postgres.init_postgres()
     await loader.load_rules_from_db()
+    refresh_task = asyncio.create_task(_periodic_rule_refresh())
     yield
+    refresh_task.cancel()
+    try:
+        await refresh_task
+    except asyncio.CancelledError:
+        pass
     # Graceful shutdown — asyncpg pool closes itself via GC, but be explicit
     pool = postgres.get_pool()
     if pool is not None:

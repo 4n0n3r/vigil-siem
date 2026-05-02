@@ -1,0 +1,20 @@
+title: Windows Security - RDP Session Reconnected
+id: win-sec-4778-001
+status: stable
+description: Detects RDP session reconnection events (Event ID 4778). Activity baseline rule — off-hours reconnects from unusual source IPs warrant investigation as potential unauthorized remote access.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.lateral_movement
+  - attack.t1021.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4778
+  condition: selection
+falsepositives:
+  - All legitimate RDP reconnections by authorized users
+level: low

@@ -1,0 +1,33 @@
+title: Linux - Web Server Process Spawning Shell
+id: linux-webshell-spawn-001
+status: stable
+description: Detects shell processes (bash, sh, dash, zsh) spawned within the Apache or Nginx systemd service unit — the primary indicator of web shell execution. If a web server spawns a shell, it almost certainly indicates RCE via a web shell or server-side vulnerability.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.execution
+  - attack.t1505.003
+  - attack.persistence
+logsource:
+  product: linux
+detection:
+  sel_apache_bash:
+    source|startswith: "journald:"
+    _SYSTEMD_UNIT: "apache2.service"
+    _COMM: "bash"
+  sel_apache_sh:
+    source|startswith: "journald:"
+    _SYSTEMD_UNIT: "apache2.service"
+    _COMM: "sh"
+  sel_nginx_bash:
+    source|startswith: "journald:"
+    _SYSTEMD_UNIT: "nginx.service"
+    _COMM: "bash"
+  sel_nginx_sh:
+    source|startswith: "journald:"
+    _SYSTEMD_UNIT: "nginx.service"
+    _COMM: "sh"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — web servers must not spawn interactive shells
+level: critical

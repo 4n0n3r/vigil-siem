@@ -1,0 +1,27 @@
+title: Web Attack - Jenkins Groovy Script Console Access
+id: web-jenkins-script-001
+status: stable
+description: Detects access to the Jenkins Groovy Script Console (/script, /scriptText). Unauthenticated or unauthorized access provides direct OS-level code execution via Groovy System.exec(). Frequently targeted by ransomware operators.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.execution
+  - attack.t1059
+  - attack.initial_access
+  - attack.t1190
+logsource:
+  product: web
+detection:
+  sel_script:
+    source|startswith: "web:"
+    path: "/script"
+  sel_scripttext:
+    source|startswith: "web:"
+    path: "/scriptText"
+  sel_jenkins_groovy:
+    source|startswith: "web:"
+    path|contains: "/groovyScript"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized Jenkins administrators using the script console for maintenance
+level: critical

@@ -1,0 +1,28 @@
+title: Linux - Shell Profile or RC File Modified via Editor
+id: linux-rc-file-modified-001
+status: stable
+description: Detects references to shell profile and RC file modification in journald. Attackers add malicious commands to .bashrc, .bash_profile, or /etc/profile.d/ for persistent code execution on every shell login.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1546.004
+logsource:
+  product: linux
+detection:
+  sel_bashrc:
+    source|startswith: "journald:"
+    MESSAGE|contains: ".bashrc"
+  sel_bash_profile:
+    source|startswith: "journald:"
+    MESSAGE|contains: ".bash_profile"
+  sel_profile_d:
+    source|startswith: "journald:"
+    MESSAGE|contains: "/etc/profile.d/"
+  sel_zshrc:
+    source|startswith: "journald:"
+    MESSAGE|contains: ".zshrc"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate shell customization by users, configuration management tools
+level: high

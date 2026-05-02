@@ -1,0 +1,21 @@
+title: Web Attack - HTTP TRACE or TRACK Method
+id: web-trace-track-001
+status: stable
+description: Detects HTTP TRACE and TRACK methods which enable cross-site tracing (XST) attacks to steal cookies and auth tokens from authenticated sessions.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1185
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    method:
+      - "TRACE"
+      - "TRACK"
+  condition: selection
+falsepositives:
+  - WebDAV or misconfigured reverse proxy echoing TRACE (should be disabled)
+level: medium

@@ -1,0 +1,20 @@
+title: Windows Security - Local Security Group Modified
+id: win-sec-4735-001
+status: stable
+description: Detects modification of a security-enabled local group (Event ID 4735). Group property changes (description, name) may indicate attacker grooming a shadow group for covert access.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4735
+  condition: selection
+falsepositives:
+  - Authorized IT group management
+level: medium

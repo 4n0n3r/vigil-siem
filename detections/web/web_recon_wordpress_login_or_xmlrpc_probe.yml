@@ -1,0 +1,25 @@
+title: Web Recon - WordPress Login or XMLRPC Probe
+id: web-wordpress-probe-001
+status: stable
+description: Detects probes targeting WordPress authentication endpoints. xmlrpc.php is a common vector for brute force amplification and DDoS via multicall abuse.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.reconnaissance
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  sel_login:
+    source|startswith: "web:"
+    path|contains: "/wp-login.php"
+  sel_xmlrpc:
+    source|startswith: "web:"
+    path|contains: "/xmlrpc.php"
+  sel_wpadmin:
+    source|startswith: "web:"
+    path|startswith: "/wp-admin/"
+  condition: 1 of sel_*
+falsepositives:
+  - WordPress site administrators logging in (suppress source IP of known admins)
+level: low

@@ -1,0 +1,20 @@
+title: Windows Security - Account Lockout
+id: win-sec-4740-001
+status: stable
+description: Detects account lockout events (Event ID 4740). Repeated lockouts indicate brute force or password spray attacks. Individual events may be legitimate mistyped passwords.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1110
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4740
+  condition: selection
+falsepositives:
+  - Legitimate users locking themselves out after password change
+level: medium

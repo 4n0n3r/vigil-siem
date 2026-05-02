@@ -1,0 +1,21 @@
+title: Windows Security - Event Log Service Shutdown
+id: win-sec-1100-001
+status: stable
+description: Detects the Windows Event Log service shutting down (Event ID 1100). An attacker stopping the event log service eliminates all further forensic evidence. Near-zero false positive rate outside deliberate tampering.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1070.001
+  - attack.t1562.002
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 1100
+  condition: selection
+falsepositives:
+  - Planned system shutdown (correlate with 4647/4634 logoff events)
+level: critical

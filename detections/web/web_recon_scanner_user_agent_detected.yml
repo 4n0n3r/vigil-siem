@@ -1,0 +1,19 @@
+title: Web Recon - Scanner User-Agent Detected
+id: web-scanner-ua-001
+status: stable
+description: Detects HTTP requests from known scanner user-agents (sqlmap, nikto, nuclei, gobuster, etc). Pre-computed ua_category field set by the web log collector.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.reconnaissance
+  - attack.t1595
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    ua_category: "scanner"
+  condition: selection
+falsepositives:
+  - Authorized vulnerability scanning by internal security team
+level: low

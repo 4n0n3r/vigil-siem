@@ -1,0 +1,26 @@
+title: Web Attack - Apache Tomcat Manager Probe
+id: web-tomcat-manager-001
+status: stable
+description: Detects probes targeting the Apache Tomcat Manager application. Authenticated access allows WAR file deployment, granting direct remote code execution on the server.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.execution
+logsource:
+  product: web
+detection:
+  sel_manager:
+    source|startswith: "web:"
+    path|startswith: "/manager/html"
+  sel_manager_text:
+    source|startswith: "web:"
+    path|startswith: "/manager/text"
+  sel_host_manager:
+    source|startswith: "web:"
+    path|startswith: "/host-manager"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized Tomcat administrators accessing the manager app (should be IP-restricted)
+level: high

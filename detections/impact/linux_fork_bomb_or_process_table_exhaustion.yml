@@ -1,0 +1,25 @@
+title: Linux - Fork Bomb or Process Table Exhaustion
+id: linux-fork-exhaustion-001
+status: stable
+description: Detects kernel messages indicating process table exhaustion from failed fork calls. Indicates a fork bomb attack, malware spawning excessive subprocesses, or a DoS attempt targeting the host.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.impact
+  - attack.t1499.001
+logsource:
+  product: linux
+detection:
+  sel_fork:
+    source|startswith: "journald:"
+    MESSAGE|contains: "fork: retry: Resource temporarily unavailable"
+  sel_maxproc:
+    source|startswith: "journald:"
+    MESSAGE|contains: "can't fork"
+  sel_noproc:
+    source|startswith: "journald:"
+    MESSAGE|contains: "resource limit reached for process"
+  condition: 1 of sel_*
+falsepositives:
+  - Build systems or CI runners hitting process limits (tune limit vs. alert thresholds)
+level: high

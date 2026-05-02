@@ -1,0 +1,26 @@
+title: Web Attack - Private Key or Certificate File Access
+id: web-privkey-access-001
+status: stable
+description: Detects attempts to download private key or certificate files exposed on the web server.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.credential_access
+  - attack.t1552.004
+logsource:
+  product: web
+detection:
+  src:
+    source|startswith: "web:"
+  ext:
+    extension:
+      - "pem"
+      - "key"
+      - "p12"
+      - "pfx"
+      - "p8"
+      - "der"
+  condition: src and ext
+falsepositives:
+  - Legitimate certificate download pages (restrict to specific paths)
+level: high

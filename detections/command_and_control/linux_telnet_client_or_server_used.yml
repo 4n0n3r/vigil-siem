@@ -1,0 +1,26 @@
+title: Linux - Telnet Client or Server Used
+id: linux-telnet-001
+status: stable
+description: Detects telnet client or server process execution. Telnet transmits credentials and data in plaintext. Any telnet usage on a modern system indicates either a legacy misconfiguration (attack surface) or an attacker using it as a simple reverse shell substitute.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.command_and_control
+  - attack.t1071
+  - attack.initial_access
+logsource:
+  product: linux
+detection:
+  sel_telnet:
+    source|startswith: "journald:"
+    _COMM: "telnet"
+  sel_telnetd:
+    source|startswith: "journald:"
+    _COMM: "telnetd"
+  sel_in_telnetd:
+    source|startswith: "journald:"
+    _COMM: "in.telnetd"
+  condition: 1 of sel_*
+falsepositives:
+  - Legacy network device management using telnet (migrate to SSH)
+level: high

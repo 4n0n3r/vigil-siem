@@ -1,0 +1,24 @@
+title: Linux - Suspicious Download from External Host
+id: linux-external-download-001
+status: stable
+description: Detects curl or wget downloading from external hosts without piping to shell. Lower severity than pipe-to-shell variant — may indicate staging of tools or payloads for later execution.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.command_and_control
+  - attack.t1105
+logsource:
+  product: linux
+detection:
+  sel_curl:
+    source|startswith: "journald:"
+    MESSAGE|contains: "curl"
+    MESSAGE|contains: "http"
+  sel_wget:
+    source|startswith: "journald:"
+    MESSAGE|contains: "wget"
+    MESSAGE|contains: "http"
+  condition: 1 of sel_*
+falsepositives:
+  - Package managers, update scripts, monitoring agents (high FP rate — suppress known patterns)
+level: low

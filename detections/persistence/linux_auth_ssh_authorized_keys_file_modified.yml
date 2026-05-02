@@ -1,0 +1,20 @@
+title: Linux Auth - SSH Authorized Keys File Modified
+id: linux-ssh-authkeys-001
+status: stable
+description: Detects access or modification to SSH authorized_keys files. Adding an attacker public key grants persistent passwordless SSH access.
+author: Vigil
+date: 2026/04/24
+tags:
+  - attack.persistence
+  - attack.t1098.004
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    source|startswith: "journald:"
+    MESSAGE|contains: "authorized_keys"
+  condition: selection
+falsepositives:
+  - Automated configuration management (Ansible, Chef) deploying SSH keys
+level: critical

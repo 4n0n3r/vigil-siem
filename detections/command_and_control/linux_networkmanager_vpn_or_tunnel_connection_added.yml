@@ -1,0 +1,25 @@
+title: Linux - NetworkManager VPN or Tunnel Connection Added
+id: linux-nm-vpn-001
+status: stable
+description: Detects new VPN or network tunnel connections added via NetworkManager. Attackers establish VPN tunnels for persistent encrypted C2 channels or to route traffic through the compromised host.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.command_and_control
+  - attack.t1572
+logsource:
+  product: linux
+detection:
+  sel_vpn:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "NetworkManager"
+    MESSAGE|contains: "VPN"
+    MESSAGE|contains: "connected"
+  sel_new_conn:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "NetworkManager"
+    MESSAGE|contains: "new connection"
+  condition: 1 of sel_*
+falsepositives:
+  - Authorized VPN connections by administrators, legitimate split-tunnel configurations
+level: medium

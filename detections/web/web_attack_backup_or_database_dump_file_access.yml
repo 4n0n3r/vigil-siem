@@ -1,0 +1,27 @@
+title: Web Attack - Backup or Database Dump File Access
+id: web-backup-dump-001
+status: stable
+description: Detects HTTP access to backup archives and database dump files by extension. Exposed backups commonly contain full application source code and credentials.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.credential_access
+  - attack.t1552
+logsource:
+  product: web
+detection:
+  sel_src:
+    source|startswith: "web:"
+  sel_ext:
+    extension:
+      - "sql"
+      - "bak"
+      - "dump"
+      - "mdb"
+      - "sqlite"
+      - "sqlite3"
+      - "db"
+  condition: sel_src and sel_ext
+falsepositives:
+  - Legitimate download areas with database files (restrict to authenticated paths)
+level: medium

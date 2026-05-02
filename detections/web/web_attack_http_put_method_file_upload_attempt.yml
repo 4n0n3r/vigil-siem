@@ -1,0 +1,21 @@
+title: Web Attack - HTTP PUT Method File Upload Attempt
+id: web-http-put-001
+status: stable
+description: Detects HTTP PUT requests, which may indicate WebDAV file upload attempts or REST API abuse to overwrite server-side files. PUT to arbitrary paths on misconfigured servers allows direct web shell upload.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.initial_access
+  - attack.t1190
+  - attack.persistence
+  - attack.t1505.003
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    method: "PUT"
+  condition: selection
+falsepositives:
+  - Legitimate REST APIs using PUT for resource updates (suppress known API paths)
+level: high

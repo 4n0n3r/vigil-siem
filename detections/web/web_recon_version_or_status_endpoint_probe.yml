@@ -1,0 +1,28 @@
+title: Web Recon - Version or Status Endpoint Probe
+id: web-version-probe-001
+status: stable
+description: Detects probes to version, status, health, and info endpoints that disclose application version, framework details, or uptime. Used by attackers to fingerprint and select exploits.
+author: Vigil
+date: 2026/04/26
+tags:
+  - attack.reconnaissance
+  - attack.t1590
+logsource:
+  product: web
+detection:
+  selection:
+    source|startswith: "web:"
+    path:
+      - "/version"
+      - "/info"
+      - "/status"
+      - "/health"
+      - "/api/version"
+      - "/api/status"
+      - "/api/info"
+      - "/build-info"
+      - "/server-info"
+  condition: selection
+falsepositives:
+  - Monitoring systems polling health endpoints (suppress by source IP)
+level: low

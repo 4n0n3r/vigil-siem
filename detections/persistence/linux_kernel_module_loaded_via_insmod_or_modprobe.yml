@@ -1,0 +1,24 @@
+title: Linux - Kernel Module Loaded via insmod or modprobe
+id: linux-kmod-load-001
+status: stable
+description: Detects kernel module loading via insmod or modprobe. Attackers use malicious kernel modules (rootkits) to achieve persistence, hide processes, and intercept system calls.
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1547.006
+  - attack.defense_evasion
+  - attack.t1014
+logsource:
+  product: linux
+detection:
+  sel_insmod:
+    source|startswith: "journald:"
+    _COMM: "insmod"
+  sel_modprobe:
+    source|startswith: "journald:"
+    _COMM: "modprobe"
+  condition: 1 of sel_*
+falsepositives:
+  - Legitimate kernel module management by system administrators or hardware drivers
+level: medium

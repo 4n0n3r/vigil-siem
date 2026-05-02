@@ -1,0 +1,20 @@
+title: Windows Security - Audit Events Dropped
+id: win-sec-1101-001
+status: stable
+description: Detects audit events being dropped due to log buffer overflow (Event ID 1101). May indicate an attacker flooding logs with noise to cause drop conditions, hiding malicious events among discarded records.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.defense_evasion
+  - attack.t1562.006
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 1101
+  condition: selection
+falsepositives:
+  - Heavily loaded domain controllers during peak authentication periods
+level: high

@@ -1,0 +1,24 @@
+title: Linux - DNS Query for Tor or Dark Web Domain
+id: linux-dns-darkweb-001
+status: stable
+description: Detects DNS resolution attempts for .onion domains via systemd-resolved. Indicates an attacker using Tor for anonymized C2 communication or exfiltration channel establishment.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.command_and_control
+  - attack.t1090.003
+logsource:
+  product: linux
+detection:
+  sel_onion:
+    source|startswith: "journald:"
+    SYSLOG_IDENTIFIER: "systemd-resolved"
+    MESSAGE|contains: ".onion"
+  sel_msg_onion:
+    source|startswith: "journald:"
+    MESSAGE|contains: ".onion"
+    MESSAGE|contains: "NXDOMAIN"
+  condition: 1 of sel_*
+falsepositives:
+  - Tor Browser or privacy tools legitimately resolving .onion addresses
+level: high

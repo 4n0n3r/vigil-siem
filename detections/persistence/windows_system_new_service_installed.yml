@@ -1,0 +1,20 @@
+title: Windows System - New Service Installed
+id: win-sys-7045-001
+status: stable
+description: Detects new Windows service installation (Event ID 7045). Malware and post-exploitation frameworks commonly install services for persistence and lateral movement (e.g., Cobalt Strike, Metasploit payloads).
+author: Vigil
+date: 2026/04/25
+tags:
+  - attack.persistence
+  - attack.t1543.003
+logsource:
+  product: windows
+  service: system
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 7045
+  condition: selection
+falsepositives:
+  - Legitimate software installations, driver updates, endpoint security agents
+level: high

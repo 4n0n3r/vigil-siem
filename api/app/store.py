@@ -108,15 +108,25 @@ async def search_events(
     endpoint_id: Optional[str] = None,
 ) -> list[StoredEvent]:
     """Search events — ClickHouse if available, else fallback list."""
+    from app.db import clickhouse  # noqa: PLC0415
+
     client = _get_ch_client()
     if client is not None:
         try:
             return await asyncio.to_thread(_ch_search, client, query, from_time, to_time, limit, endpoint_id)
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                '{"event": "ch_search_failed", "error": "%s", "fallback": true}',
+            logger.error(
+                '{"event": "ch_search_failed", "error": "%s"}',
                 str(exc).replace('"', "'"),
             )
+            raise RuntimeError(f"ClickHouse search failed: {exc}") from exc
+
+    if clickhouse.is_configured():
+        raise RuntimeError(
+            "ClickHouse is configured but unavailable — "
+            "search not available. Check CLICKHOUSE_DSN and connectivity."
+        )
+
     return await asyncio.to_thread(_fallback_search, query, from_time, to_time, limit, endpoint_id)
 
 
@@ -130,6 +140,8 @@ async def hunt_events(
     endpoint_id: Optional[str] = None,
 ) -> dict:
     """Run an HQL hunt query and return events + aggregations + timeline."""
+    from app.db import clickhouse  # noqa: PLC0415
+
     client = _get_ch_client()
     if client is not None:
         try:
@@ -137,10 +149,18 @@ async def hunt_events(
                 _ch_hunt, client, query, from_time, to_time, limit, agg_field, timeline, endpoint_id
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                '{"event": "ch_hunt_failed", "error": "%s", "fallback": true}',
+            logger.error(
+                '{"event": "ch_hunt_failed", "error": "%s"}',
                 str(exc).replace('"', "'"),
             )
+            raise RuntimeError(f"ClickHouse hunt failed: {exc}") from exc
+
+    if clickhouse.is_configured():
+        raise RuntimeError(
+            "ClickHouse is configured but unavailable — "
+            "hunt not available. Check CLICKHOUSE_DSN and connectivity."
+        )
+
     return await asyncio.to_thread(_fallback_hunt, query, from_time, to_time, limit, agg_field, timeline, endpoint_id)
 
 

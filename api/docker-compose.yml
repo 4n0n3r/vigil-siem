@@ -7,6 +7,7 @@ services:
     volumes:
       - ./app:/app/app          # mount source so edits are live without rebuild
       - ./requirements.txt:/app/requirements.txt
+      - ../detections:/app/detections:ro
     ports:
       - "8001:8001"
     environment:

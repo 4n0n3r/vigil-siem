@@ -1,0 +1,20 @@
+title: Windows Security - Global Security Group Modified
+id: win-sec-4737-001
+status: stable
+description: Detects modification of a security-enabled global group (Event ID 4737). Changes to high-value groups (Domain Admins, Enterprise Admins) may represent privilege escalation or group policy tampering.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.persistence
+  - attack.t1098
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    source|startswith: "winlog:"
+    event_id: 4737
+  condition: selection
+falsepositives:
+  - Authorized IT group management
+level: medium

@@ -1,0 +1,25 @@
+title: Linux - Process Running with Root UID from Temp Directory
+id: linux-root-tmp-exec-001
+status: stable
+description: Detects root-owned processes executing from world-writable directories (/tmp, /dev/shm). Combining root UID with temp directory execution strongly indicates a privilege escalation exploit delivering a root backdoor binary.
+author: Vigil
+date: 2026/04/29
+tags:
+  - attack.privilege_escalation
+  - attack.t1068
+  - attack.execution
+logsource:
+  product: linux
+detection:
+  sel_tmp_root:
+    source|startswith: "journald:"
+    _EXE|startswith: "/tmp/"
+    _UID: "0"
+  sel_shm_root:
+    source|startswith: "journald:"
+    _EXE|startswith: "/dev/shm/"
+    _UID: "0"
+  condition: 1 of sel_*
+falsepositives:
+  - None expected — root processes must not execute from world-writable directories
+level: critical
