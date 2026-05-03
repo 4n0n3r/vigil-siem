@@ -28,6 +28,11 @@ services:
     command: >
       sh -c "pip install --quiet -r requirements.txt &&
              uvicorn app.main:app --host 0.0.0.0 --port 8001 --loop asyncio"
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
     restart: unless-stopped
 
   postgres:
