@@ -68,6 +68,18 @@ async def ingest_event(request: Request, body: IngestRequest) -> IngestResponse:
     rules        = loader.get_enabled_rules()
     suppressions = await pg_suppressions.get_active_suppressions()
 
+    if not rules:
+        # No rules loaded (e.g. postgres unavailable) — skip evaluation entirely.
+        if endpoint_id:
+            await pg_endpoints.heartbeat(endpoint_id)
+        return IngestResponse(
+            id=event_id,
+            source=body.source,
+            timestamp=timestamp,
+            status="ingested",
+            alert_ids=[],
+        )
+
     def _eval() -> list[dict]:
         matched = []
         eval_event   = {"source": stored.source, **stored.event}
@@ -173,6 +185,12 @@ async def ingest_batch(request: Request, body: BatchIngestRequest) -> BatchInges
     # stays free to serve search and other requests concurrently.
     rules        = loader.get_enabled_rules()
     suppressions = await pg_suppressions.get_active_suppressions()
+
+    if not rules:
+        # No rules loaded — skip evaluation entirely.
+        if endpoint_id:
+            await pg_endpoints.heartbeat(endpoint_id)
+        return BatchIngestResponse(ingested=len(ids), ids=ids, errors=errors, alerts_generated=0)
 
     def _eval_batch() -> list[tuple[dict, StoredEvent]]:
         matches: list[tuple[dict, StoredEvent]] = []
