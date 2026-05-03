@@ -127,7 +127,7 @@ async def search_events(
             "search not available. Check CLICKHOUSE_DSN and connectivity."
         )
 
-    return await asyncio.to_thread(_fallback_search, query, from_time, to_time, limit, endpoint_id)
+    return _fallback_search(query, from_time, to_time, limit, endpoint_id)
 
 
 async def hunt_events(
@@ -161,7 +161,7 @@ async def hunt_events(
             "hunt not available. Check CLICKHOUSE_DSN and connectivity."
         )
 
-    return await asyncio.to_thread(_fallback_hunt, query, from_time, to_time, limit, agg_field, timeline, endpoint_id)
+    return _fallback_hunt(query, from_time, to_time, limit, agg_field, timeline, endpoint_id)
 
 
 async def count_last_24h() -> int:
@@ -175,7 +175,7 @@ async def count_last_24h() -> int:
                 '{"event": "ch_count_failed", "error": "%s", "fallback": true}',
                 str(exc).replace('"', "'"),
             )
-    return await asyncio.to_thread(_fallback_count_24h)
+    return _fallback_count_24h()
 
 
 async def count_events_in_window(
@@ -193,7 +193,7 @@ async def count_events_in_window(
                 '{"event": "ch_count_window_failed", "error": "%s", "fallback": true}',
                 str(exc).replace('"', "'"),
             )
-    return await asyncio.to_thread(_fallback_count_in_window, pattern, ip, window_minutes)
+    return _fallback_count_in_window(pattern, ip, window_minutes)
 
 
 # ---------------------------------------------------------------------------
