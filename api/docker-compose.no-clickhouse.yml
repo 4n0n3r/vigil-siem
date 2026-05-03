@@ -1,0 +1,21 @@
+## No-ClickHouse override for deployments without ClickHouse (in-memory event store).
+##
+## Usage:
+##   docker compose -f docker-compose.yml -f docker-compose.no-clickhouse.yml up -d
+##
+## This removes the ClickHouse dependency from the API and suppresses the DSN so
+## the API falls back to its in-memory event store backed by PostgreSQL for everything else.
+
+version: "3.9"
+
+services:
+  api:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - CLICKHOUSE_DSN=
+
+  clickhouse:
+    profiles:
+      - clickhouse
