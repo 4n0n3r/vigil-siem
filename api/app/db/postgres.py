@@ -35,7 +35,7 @@ async def init_postgres() -> None:
     try:
         import asyncpg  # noqa: PLC0415
 
-        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=10)
+        pool = await asyncpg.create_pool(dsn, min_size=0, max_size=10)
         _pg_pool = pool
 
         # Run migrations in order.
