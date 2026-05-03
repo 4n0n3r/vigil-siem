@@ -1,21 +1,51 @@
-## No-ClickHouse override for deployments without ClickHouse (in-memory event store).
+## Standalone compose for deployments without ClickHouse (in-memory event store).
 ##
 ## Usage:
-##   docker compose -f docker-compose.yml -f docker-compose.no-clickhouse.yml up -d
-##
-## This removes the ClickHouse dependency from the API and suppresses the DSN so
-## the API falls back to its in-memory event store backed by PostgreSQL for everything else.
+##   docker compose -f docker-compose.no-clickhouse.yml up -d
 
 version: "3.9"
 
 services:
   api:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./app:/app/app
+      - ./requirements.txt:/app/requirements.txt
+      - ../detections:/app/detections:ro
+    ports:
+      - "8001:8001"
+    environment:
+      - VIGIL_API_HOST=0.0.0.0
+      - VIGIL_API_PORT=8001
+      - POSTGRES_DSN=postgresql://vigil:vigil@postgres:5432/vigil
+      - CLICKHOUSE_DSN=
+    env_file:
+      - .env.example
     depends_on:
       postgres:
         condition: service_healthy
-    environment:
-      - CLICKHOUSE_DSN=
+    command: >
+      sh -c "pip install --quiet -r requirements.txt &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload --loop asyncio"
+    restart: unless-stopped
 
-  clickhouse:
-    profiles:
-      - clickhouse
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil
+      POSTGRES_DB: vigil
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
